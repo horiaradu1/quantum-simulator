@@ -1,0 +1,13 @@
+/.venv/
+/dist/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ipynb_checkpoints/
+
+/.codex/
+/.claude/settings.local.json
+/CLAUDE.local.md
+.env
+.env.*
+!.env.example

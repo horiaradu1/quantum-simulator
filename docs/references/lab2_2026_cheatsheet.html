@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quantum Lab 2 Cheatsheet</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 30px;
+        }
+
+        .section {
+            border: 1px solid #333;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+
+        .title {
+            font-weight: bold;
+            background-color: #f2f2f2;
+            padding: 10px;
+            border-bottom: 1px solid #333;
+        }
+
+        pre {
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="section">
+        <div class="title">Setup in Jupyter</div>
+        <p>Run in a notebook code cell:</p>
+        <pre><code>%pip install numpy matplotlib</code></pre>
+        <p>Restart the kernel if needed, then import:</p>
+        <pre><code>import numpy as np
+import matplotlib.pyplot as plt</code></pre>
+        <p>For all lab dependencies, use <code>%pip install -r requirements.txt</code> from the extracted lab folder.</p>
+    </div>
+
+    <div class="section">
+        <div class="title">Numpy Constants</div>
+        <p><code>np.pi</code> - The value of π (pi)</p>
+    </div>
+
+    <div class="section">
+        <div class="title">Numpy Array Operations</div>
+        <p><code>np.array([1, 2, 3])</code> - Create a 1-dimensional array</p>
+        <p><code>np.array([[1, 2, 3], [4, 5, 6]])</code> - Create a 2-dimensional array</p>
+        <p><code>np.eye(N)</code> - Create an N x N identity matrix</p>
+        <p><code>np.array([1, 0], dtype=complex)</code> - Create a state array that can store complex amplitudes</p>
+        <p><code>np.zeros(2**n, dtype=complex)</code> - Allocate an n-qubit array; initialize it before use</p>
+        <p><code>a.shape</code>, <code>a.ndim</code>, <code>len(a)</code> - Array shape, number of dimensions, and length</p>
+        <p><code>a.copy()</code> - Make an independent copy</p>
+        <p><code>np.isfinite(a).all()</code> - Check that all entries are finite</p>
+    </div>
+
+    <div class="section">
+        <div class="title">Numpy Comparisons</div>
+        <p><code>np.array_equal(a, b)</code> - Check if two arrays are exactly equal</p>
+        <p><code>np.isclose(a, b)</code> - Element-wise comparison with tolerance</p>
+        <p><code>np.allclose(a, b)</code> - Check if all elements are close within tolerance</p>
+        <p>Use approximate comparisons for floating-point results. <code>np.allclose</code> does not ignore global phase.</p>
+    </div>
+
+    <div class="section">
+        <div class="title">Useful Numpy Functions</div>
+        <p><code>np.abs(x)</code> - Absolute value; for a complex number, its magnitude</p>
+        <p><code>np.exp(x)</code> - Exponential function</p>
+        <p><code>np.sqrt(x)</code> - Square root function</p>
+        <p><code>np.angle(x)</code> - Return the angle (phase) of complex numbers</p>
+        <p><code>np.sin(x)</code>, <code>np.cos(x)</code>, <code>np.arccos(x)</code> - Trigonometric functions; angles are in radians</p>
+        <p><code>np.arctan2(y, x)</code> - Angle with the correct quadrant</p>
+        <p><code>np.clip(x, -1, 1)</code> - Clip rounding errors before <code>np.arccos</code></p>
+        <p><code>np.real(x)</code>, <code>np.imag(x)</code> - Real and imaginary parts</p>
+    </div>
+
+    <div class="section">
+        <div class="title">Matrix Operations</div>
+        <p><code>np.transpose(mat)</code> - Transpose of matrix</p>
+        <p><code>np.conj(mat)</code> - Conjugate of matrix</p>
+        <p><code>mat.conj().T</code> - Conjugate transpose (adjoint) of a 2-dimensional matrix</p>
+        <p><code>np.sum([mat1, mat2], axis=0)</code> - Sum of two matrices</p>
+        <p><code>np.dot(a, b)</code> - Dot product of two arrays or matrices; it does not conjugate complex inputs</p>
+        <p><code>A @ B</code> - Matrix product; <code>A * B</code> is element-wise multiplication</p>
+        <p><code>np.vdot(a, b)</code> - Inner product of vectors, conjugating the first argument</p>
+        <p><code>k=5; a=np.array([1,2,3]); prod = k*a</code> - Multiply array with a constant</p>
+        <p><code>np.linalg.det(mat)</code> - Determinant of matrix</p>
+        <p><code>np.linalg.matrix_rank(mat)</code> - Rank of matrix</p>
+        <p><code>np.linalg.norm(a)</code> - Euclidean norm of a vector</p>
+        <p><code>values, vectors = np.linalg.eig(mat)</code> - Eigenvalues and eigenvectors; column <code>vectors[:, i]</code> corresponds to <code>values[i]</code></p>
+        <p>Eigenvalues need not be sorted; eigenvectors are not unique in scale or phase.</p>
+        <p>Transposing a 1-dimensional array leaves its shape unchanged. States must be normalized; gates must be square and unitary. A sum of gates need not be unitary.</p>
+    </div>
+
+    <div class="section">
+        <div class="title">Gate Application and Order</div>
+        <p><code>U @ state</code> - Apply a gate to an amplitude array</p>
+        <p><code>B @ A @ state</code> - Apply A first, then B; the rightmost matrix acts first</p>
+        <p>In this lab, <code>multiply_gates([A, B, C])</code> returns <code>A @ B @ C</code>, not the chronological sequence A, B, C.</p>
+        <p>A unitary gate's inverse is its adjoint, not generally its transpose.</p>
+    </div>
+
+    <div class="section">
+        <div class="title">Tensor Products and Qubit Ordering</div>
+        <p><code>np.kron(a, b)</code> - Tensor product; the left factor comes first in lab basis labels</p>
+        <p>An n-qubit state has <code>2**n</code> amplitudes. A full n-qubit gate matrix has shape <code>(2**n, 2**n)</code>.</p>
+        <p>Lab order: <code>q0 q1 ... q(n-1)</code>; q0 is the most significant bit. For three qubits, index 5 is <code>|101&gt;</code>.</p>
+        <p><code>int("101", 2)</code> - Convert a basis bitstring to its array index</p>
+        <p><code>format(index, f"0{n}b")</code> - Convert an index to an n-bit basis label</p>
+        <p><code>np.eye(2**k, dtype=complex)</code> - Identity on k qubits; k = 0 gives a 1 x 1 matrix</p>
+        <p><code>State.apply_gate(gate, n_gate, starting_qubit)</code> acts on a consecutive block. Surround the gate with identity tensor factors for unaffected qubits.</p>
+        <p>CNOT uses the block's first qubit as control; <code>CNOT10</code> reverses control and target.</p>
+    </div>
+
+    <div class="section">
+        <div class="title">Random Operations</div>
+        <p><code>np.random.choice(a)</code> - Random sample from 1-D array</p>
+        <p><code>np.random.choice([0,1], p=[0.2, 0.8])</code> - Random sample from either 0 or 1, with probabilities 0.2 for 0 and 0.8 for 1</p>
+        <p><code>np.random.seed(2026)</code> - Make the trials above reproducible</p>
+        <p><code>rng = np.random.default_rng(2026)</code> - Independent generator; sample with <code>rng.choice(...)</code></p>
+        <p>Probabilities must be nonnegative and sum to 1. Drawing an outcome does not update a state array.</p>
+    </div>
+
+    <div class="section">
+        <div class="title">Sampling versus Collapsing Measurement</div>
+        <p><code>State.sample()</code> - Draw an outcome without changing the state; repeated calls represent independent preparations.</p>
+        <p><code>State.produce_measurement()</code> - Draw an outcome and collapse the stored state.</p>
+        <p><code>measure_computational(state)</code> and <code>measure_plus_minus(state)</code> update the input in place. Use writable floating-point/complex arrays, not integer arrays.</p>
+        <p>A +/- collapse stores the computational-basis amplitudes of <code>|+&gt;</code> or <code>|-&gt;</code>.</p>
+        <p>Repeated collapse in the same basis returns the same outcome. For independent shots, copy the original state for each trial or use <code>sample()</code>.</p>
+    </div>
+
+    <div class="section">
+        <div class="title">State Representations</div>
+        <p><code>np.abs(state)</code> - Magnitudes of the complex amplitudes</p>
+        <p><code>np.abs(state)**2</code> - Computational-basis measurement probabilities</p>
+        <p><code>np.real(state)</code>, <code>np.imag(state)</code> - Components for complex-amplitude plots</p>
+        <p>One qubit: |ψ⟩ = e<sup>iω</sup>(cos(θ/2)|0⟩ + e<sup>iφ</sup>sin(θ/2)|1⟩). Theta ∈ [0, π]; phi is relative phase; omega is global phase.</p>
+        <p>At the poles, phi is undetermined: follow the notebook's convention. Phases are modulo 2π.</p>
+        <p>A pure-state Bloch sphere represents one qubit, not a general entangled register.</p>
+    </div>
+
+    <div class="section">
+        <div class="title">Matplotlib Plotting</div>
+        <pre><code>fig, ax = plt.subplots()
+ax.bar(labels, values)
+ax.set_xlabel("Basis state")
+ax.set_ylabel("Value")
+plt.show()</code></pre>
+        <p><code>ax.bar(x - width/2, real_values, width, label="Real")</code> and <code>ax.bar(x + width/2, imag_values, width, label="Imaginary")</code> - Two series; add <code>ax.legend()</code></p>
+        <p><code>ax.set_xticks(x, labels)</code> - Label ticks with basis bitstrings</p>
+        <p><code>ax.quiver(x, y, dx, dy, angles="xy", scale_units="xy", scale=1)</code> - Draw 2-dimensional arrows</p>
+        <p><code>fig.add_subplot(111, projection="3d")</code> - Create 3-dimensional axes</p>
+        <p>Use real vectors for real 2-D arrows; do not silently discard imaginary components.</p>
+    </div>
+
+    <div class="section">
+        <div class="title">Qiskit: Local Circuit Simulation</div>
+        <p>If not using the included requirements file:</p>
+        <pre><code>%pip install qiskit qiskit-aer matplotlib</code></pre>
+        <pre><code>from qiskit import QuantumCircuit, transpile
+from qiskit.quantum_info import Statevector
+from qiskit_aer import AerSimulator
+from qiskit.visualization import plot_histogram
+
+qc = QuantumCircuit(3)
+qc.x(0)  # Syntax example, not the assigned circuit.
+print(qc.draw(output="text"))</code></pre>
+        <p><code>qc.h(q)</code>, <code>qc.s(q)</code>, <code>qc.cx(control, target)</code>, <code>qc.ch(control, target)</code>, <code>qc.swap(q1, q2)</code>, <code>qc.ccx(control1, control2, target)</code> - Gate methods</p>
+        <p>Obtain exact amplitudes before adding measurements:</p>
+        <pre><code>sv = Statevector.from_instruction(qc)
+amplitudes_lab_order = sv.reverse_qargs().data</code></pre>
+        <p>To collect sampled counts, measure a copy of the circuit:</p>
+        <pre><code>measured_qc = qc.copy()
+measured_qc.measure_all()
+simulator = AerSimulator()
+compiled = transpile(measured_qc, simulator)
+counts = simulator.run(compiled, shots=1024,
+                       seed_simulator=2026).result().get_counts()
+counts_lab_order = {bits[::-1]: count for bits, count in counts.items()}
+plot_histogram(counts_lab_order)</code></pre>
+        <p>Qiskit draws q0 at the top but labels states <code>q(n-1) ... q1 q0</code>. Reverse the reported order above to match the lab; keep wire numbers unchanged.</p>
+        <p>The count reversal assumes one classical register with q[i] measured into c[i], as in this example. Other mappings require different conversions.</p>
+        <p><code>Statevector(a).equiv(Statevector(b))</code> - Compare up to global phase; first use the same qubit order</p>
+        <p>Hardware additionally needs <code>qiskit-ibm-runtime</code> and an IBM account; follow the notebook's hardware section. Local simulation needs no account.</p>
+    </div>
+
+    <div class="section">
+        <div class="title">References</div>
+        <p><a href="https://algassert.com/quirk">Quirk</a> - Compare circuits using consistent wire and basis-label orders.</p>
+        <p><a href="https://qiskit.github.io/qiskit-aer/tutorials/1_aersimulator.html">Qiskit Aer simulator</a></p>
+        <p><a href="https://quantum.cloud.ibm.com/docs/en/api/qiskit/qiskit.quantum_info.Statevector">Qiskit Statevector</a></p>
+        <p><a href="https://quantum.cloud.ibm.com/docs/en/guides/bit-ordering">Qiskit bit ordering</a></p>
+    </div>
+
+</body>
+
+</html>
