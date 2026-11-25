@@ -32,12 +32,12 @@ The simulator returns fixed-width basis labels from `sample()` and `measure()`. 
 
 ### A. Minimal implementation (mandatory - from lab)
 
-- ✅ Support for N-qubit states
-- ✅ Support for state initialization (by attributing a 0/1 value to each qubit)
-- ✅ Single-qubit gates implementation: H, X, S
-- ✅ Multi-qubit gates implementation: CNOT, CH, SWAP, TOFFOLI
-- ✅ State amplitudes calculation and display
-- ✅ Measurement
+- ✅ Support for N-qubit states · `QuantumState` in [state.py](../src/quantum_simulator/backend/state.py)
+- ✅ Support for state initialization (by attributing a 0/1 value to each qubit) · `QuantumState.initialize()` in [state.py](../src/quantum_simulator/backend/state.py)
+- ✅ Single-qubit gates implementation: H, X, S · `_SINGLE_QUBIT_GATES` in [gates.py](../src/quantum_simulator/backend/gates.py)
+- ✅ Multi-qubit gates implementation: CNOT, CH, SWAP, TOFFOLI · `_MULTI_QUBIT_GATES` in [gates.py](../src/quantum_simulator/backend/gates.py)
+- ✅ State amplitudes calculation and display · `QuantumState.apply_gate()` in [state.py](../src/quantum_simulator/backend/state.py) and `SimulatorWindow._display_results()` in [window.py](../src/quantum_simulator/gui/window.py)
+- ✅ Measurement · `QuantumState.sample()` and `QuantumState.measure()` in [state.py](../src/quantum_simulator/backend/state.py)
 
 ### B. Minor tasks (0.5p)
 
