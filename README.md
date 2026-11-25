@@ -3,7 +3,6 @@
 An Introduction to Quantum Computing team project to build a quantum circuit simulator.
 
 - [Assignment PDF](docs/assignment/IQC_QuantumSimulatorTasks.pdf)
-- [Assignment task tracker](docs/tasks.md)
 - [Lab 2 reference materials](docs/references/README.md)
 
 ## Setup
