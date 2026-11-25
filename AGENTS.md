@@ -11,6 +11,7 @@
 
 - Keep docs and replies concise. Include what readers need to act, understand a decision, or verify the work.
 - Document each instruction once and link to it where needed.
+- Write code that a reader can easily follow. Use descriptive names, keep control flow explicit, and break dense expressions into meaningful steps.
 - Do not write unnecessary code comments. Add a comment only to explain reasoning or constraints that the code does not make clear.
 - Start each project Python module with a short docstring describing its role. Give each class a concise description of its responsibility.
 - Write gate matrices one row per line and put normalization factors beside the matrix or vector they scale.

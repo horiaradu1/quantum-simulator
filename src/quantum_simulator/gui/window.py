@@ -398,8 +398,11 @@ class SimulatorWindow(QMainWindow):
         state = QuantumState(len(basis))
         state.initialize(basis)
 
-        yield from self._apply_circuit_gates(state)
-        yield from self._display_results(state)
+        for step in self._apply_circuit_gates(state):
+            yield step
+
+        for step in self._display_results(state):
+            yield step
 
         self._result_state = state
         self.measure_button.setEnabled(True)
