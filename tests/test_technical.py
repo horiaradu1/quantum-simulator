@@ -131,6 +131,21 @@ class TechnicalTests(WindowTestCase):
         self.assertEqual(window.results_table.rowCount(), 0)
 
 
+class TestWindowLayout(WindowTestCase):
+    """Check the fixed parts of the editor layout."""
+
+    def test_logo_below_results(self):
+        """The course logo loads at its fixed height below the results."""
+        window = self.window
+        logo = window.logo.icon().pixmap(window.logo.iconSize(), window.logo.devicePixelRatioF())
+        self.assertFalse(logo.isNull())
+        self.assertEqual(round(logo.deviceIndependentSize().height()), 44)
+
+        table = window.results_table
+        table_bottom = table.mapTo(window, table.rect().bottomLeft()).y()
+        self.assertGreater(window.logo.mapTo(window, window.logo.rect().topLeft()).y(), table_bottom)
+
+
 class TestMemoryLifetime(WindowTestCase):
     """Check that discarded simulation states and native Qt timers are released."""
 

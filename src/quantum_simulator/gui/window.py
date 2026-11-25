@@ -3,10 +3,11 @@
 import sys
 from collections.abc import Iterator
 from functools import partial
+from pathlib import Path
 from time import perf_counter
 
-from PySide6.QtCore import QSignalBlocker, Qt, QTimer
-from PySide6.QtGui import QCloseEvent, QFontDatabase
+from PySide6.QtCore import QSignalBlocker, Qt, QTimer, QUrl
+from PySide6.QtGui import QCloseEvent, QDesktopServices, QFontDatabase, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -22,6 +23,7 @@ from PySide6.QtWidgets import (
     QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -47,6 +49,8 @@ _GATE_ROLES = {
 }
 
 _DISPLAY_TOLERANCE = 1e-12
+_LOGO_PATH = Path(__file__).with_name("assets") / "MScQCLogo.png"
+_LOGO_HEIGHT = 44
 
 
 def _panel() -> tuple[QFrame, QVBoxLayout]:
@@ -101,6 +105,8 @@ class SimulatorWindow(QMainWindow):
         splitter.addWidget(self._build_results())
         splitter.setSizes([340, 210])
         layout.addWidget(splitter, 1)
+        self.logo = self._build_logo()
+        layout.addWidget(self.logo, 0, Qt.AlignmentFlag.AlignRight)
 
         self.qubit_count.valueChanged.connect(self._change_qubits)
         self.initial_state.valueChanged.connect(self._invalidate_results)
@@ -228,6 +234,24 @@ class SimulatorWindow(QMainWindow):
         self.results_table.setFont(font)
         layout.addWidget(self.results_table, 1)
         return frame
+
+    def _build_logo(self) -> QToolButton:
+        logo = QToolButton()
+        logo.setAutoRaise(True)
+        logo.setAccessibleName("Open the MSc Quantum Computing website")
+        logo.setCursor(Qt.CursorShape.PointingHandCursor)
+        website = QUrl("https://quantum.upb.ro/")
+        logo.setToolTip(website.toDisplayString())
+        logo.clicked.connect(lambda: QDesktopServices.openUrl(website))
+        # Scale to device pixels so the logo stays sharp on high-DPI screens.
+        ratio = self.devicePixelRatioF()
+        pixmap = QPixmap(str(_LOGO_PATH)).scaledToHeight(
+            round(_LOGO_HEIGHT * ratio), Qt.TransformationMode.SmoothTransformation
+        )
+        pixmap.setDevicePixelRatio(ratio)
+        logo.setIcon(QIcon(pixmap))
+        logo.setIconSize(pixmap.deviceIndependentSize().toSize())
+        return logo
 
     def _change_qubits(self, count: int) -> None:
         with QSignalBlocker(self.initial_state), QSignalBlocker(self.initial_state.lineEdit()):

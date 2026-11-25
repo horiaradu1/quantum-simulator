@@ -1,6 +1,6 @@
 # Test results
 
-**✅ Passed** · 39 tests run
+**✅ Passed** · 40 tests run
 
 ## Gate properties
 
@@ -152,5 +152,6 @@
 - ✅ **[Run shows loading, then the Bell pair can be measured.](test_technical.py#L88)**
 - ✅ **[Choosing a new column restarts Toffoli at its first control.](test_technical.py#L65)**
 - ✅ **[A CNOT keeps its control after a duplicate or blocked target.](test_technical.py#L46)**
-- ✅ **[Disposing of a busy window destroys its timer.](test_technical.py#L159)**
-- ✅ **[Rerunning and clearing release previous states.](test_technical.py#L137)**
+- ✅ **[Disposing of a busy window destroys its timer.](test_technical.py#L174)**
+- ✅ **[Rerunning and clearing release previous states.](test_technical.py#L152)**
+- ✅ **[The course logo loads at its fixed height below the results.](test_technical.py#L137)**

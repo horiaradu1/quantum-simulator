@@ -15,4 +15,5 @@
 - Start each project Python module with a short docstring describing its role. Give each class a concise description of its responsibility.
 - Write gate matrices one row per line and put normalization factors beside the matrix or vector they scale.
 - Give each test a short docstring explaining the behavior it verifies.
+- Focus GUI tests on user workflows and specific regressions. Cover simple button clicks within a workflow when they affect its outcome.
 - In the final reply, summarize what changed, what you verified, and any open decisions or pending checks.
