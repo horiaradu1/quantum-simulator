@@ -24,7 +24,7 @@ uv run --locked python -c "import quantum_simulator"
 uv run --locked python -m quantum_simulator
 ```
 
-Choose 1–12 qubits. Use the initial-state arrows to step through binary values or type one `0` or `1` per qubit. Drag a gate from the palette onto a circuit cell. To place a multi-wire gate, click each remaining wire in the same column or drop the same gate on each wire. For controlled gates, choose the controls before the target. Right-click a gate to remove it.
+Choose qubits number. Set the initial-state. Drag a gate from the palette onto a circuit cell or select and left-click it. Right-click a gate to remove it.
 
 **Run** starts from the selected initial state and shows the nonzero outcomes below the circuit. **Measure** collapses the current result to a single outcome.
 
