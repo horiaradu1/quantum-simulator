@@ -100,6 +100,7 @@ class TechnicalTests(WindowTestCase):
         self.assertEqual(table.rowCount(), 2)
         for row, basis in enumerate(("00", "11")):
             self.assertEqual(table.item(row, 0).text(), basis)
+            self.assertEqual(table.item(row, 1).text(), "0.7071")
             self.assertEqual(table.item(row, 2).text(), "50.00%")
         window.measure_button.click()
         self.assertEqual(table.rowCount(), 1)

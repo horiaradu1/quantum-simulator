@@ -25,11 +25,6 @@ class TestCircuitResults(unittest.TestCase):
         assert_allclose([row.amplitude for row in outcomes], expected_amplitudes)
         assert_allclose([row.magnitude for row in outcomes], expected_amplitudes)
         assert_allclose([row.probability for row in outcomes], [0.5, 0, 0, 0.5])
-        report = state.format_outcomes()
-        self.assertIn("|00>", report)
-        self.assertIn("|11>", report)
-        self.assertIn("0.7071", report)
-        self.assertIn("50.00%", report)
 
     def test_results_for_four_qubit_circuit(self):
         """Four-qubit circuit results."""

@@ -114,7 +114,7 @@
 ## Circuit results
 
 - ✅ **[Bell-state results.](test_circuit_results.py#L15)**
-- ✅ **[Four-qubit circuit results.](test_circuit_results.py#L34)**
+- ✅ **[Four-qubit circuit results.](test_circuit_results.py#L29)**
 
 ## Measurement
 
@@ -147,11 +147,11 @@
 
 ## Technical
 
-- ✅ **[Closing during a run discards unfinished results.](test_technical.py#L122)**
-- ✅ **[A failed run returns to the editor and can be retried.](test_technical.py#L109)**
+- ✅ **[Closing during a run discards unfinished results.](test_technical.py#L123)**
+- ✅ **[A failed run returns to the editor and can be retried.](test_technical.py#L110)**
 - ✅ **[Run shows loading, then the Bell pair can be measured.](test_technical.py#L88)**
 - ✅ **[Choosing a new column restarts Toffoli at its first control.](test_technical.py#L65)**
 - ✅ **[A CNOT keeps its control after a duplicate or blocked target.](test_technical.py#L46)**
-- ✅ **[Disposing of a busy window destroys its timer.](test_technical.py#L174)**
-- ✅ **[Rerunning and clearing release previous states.](test_technical.py#L152)**
-- ✅ **[The course logo loads at its fixed height below the results.](test_technical.py#L137)**
+- ✅ **[Disposing of a busy window destroys its timer.](test_technical.py#L175)**
+- ✅ **[Rerunning and clearing release previous states.](test_technical.py#L153)**
+- ✅ **[The course logo loads at its fixed height below the results.](test_technical.py#L138)**

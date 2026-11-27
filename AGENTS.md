@@ -14,6 +14,7 @@
 - Write code that a reader can easily follow. Use descriptive names, keep control flow explicit, and break dense expressions into meaningful steps.
 - Do not write unnecessary code comments. Add a comment only to explain reasoning or constraints that the code does not make clear.
 - Start each project Python module with a short docstring describing its role. Give each class a concise description of its responsibility.
+- Group code into Python modules by responsibility. Keep Qt widgets and event handling in `gui/` so simulation, editor state and file handling can run without Qt.
 - Write gate matrices one row per line and put normalization factors beside the matrix or vector they scale.
 - Give each test a short docstring explaining the behavior it verifies.
 - Focus GUI tests on user workflows and specific regressions. Cover simple button clicks within a workflow when they affect its outcome.

@@ -126,13 +126,6 @@ class QuantumState:
                 probability=float(probabilities[basis_index]),
             )
 
-    def format_outcomes(self) -> str:
-        return "\n".join(
-            f"|{row.basis}>: amplitude={row.amplitude:.5f}, "
-            f"magnitude={row.magnitude:.4f}, probability={row.probability:.2%}"
-            for row in self.outcomes()
-        )
-
     def _validate_wires(self, qubits: tuple[int, ...]) -> tuple[int, ...]:
         try:
             wires = tuple(index(qubit) for qubit in qubits)
