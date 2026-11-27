@@ -1,7 +1,6 @@
 """Draw the circuit grid and translate clicks and gate drops into wire and step positions."""
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
 from math import floor
 
 from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, Signal
@@ -21,6 +20,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QFrame, QGraphicsScene, QGraphicsView, QWidget
 
+from ..backend.circuit import PlacedGate
 from ..backend.gate_catalog import GATE_CATALOG, GateSpec, WireMark
 from .gate_button import GATE_MIME_TYPE
 from .styles import ACCENT, BORDER, INK, LAVENDER, SURFACE
@@ -41,25 +41,6 @@ _INK = QColor(INK)
 _ACCENT = QColor(ACCENT)
 _GATE_FILL = QColor(SURFACE)
 _PENDING_WIRE = QColor(LAVENDER)
-
-
-# @dataclass creates the constructor from the fields. frozen=True prevents reassigning fields.
-@dataclass(frozen=True)
-class PlacedGate:
-    """A gate's circuit column, name, and wires in the order supplied to the backend."""
-
-    step: int
-    name: str
-    wires: tuple[int, ...]
-
-    @property
-    def wire_span(self) -> range:
-        """Rows crossed by the symbol, accessed as gate.wire_span."""
-        return range(min(self.wires), max(self.wires) + 1)
-
-    def overlaps(self, other: "PlacedGate") -> bool:
-        other_wires = other.wire_span
-        return self.step == other.step and any(wire in other_wires for wire in self.wire_span)
 
 
 class CircuitView(QGraphicsView):

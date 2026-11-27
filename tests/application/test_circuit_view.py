@@ -10,8 +10,9 @@ from PySide6.QtWidgets import (
     QGraphicsSimpleTextItem,
 )
 
+from quantum_simulator.backend.circuit import PlacedGate
 from quantum_simulator.backend.gate_catalog import GATE_CATALOG, GateSpec
-from quantum_simulator.gui.circuit_view import CircuitView, PlacedGate
+from quantum_simulator.gui.circuit_view import CircuitView
 
 _WIRES = 4
 

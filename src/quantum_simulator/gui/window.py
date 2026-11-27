@@ -29,10 +29,12 @@ from PySide6.QtWidgets import (
 )
 
 from ..backend import Outcome, QuantumState
+from ..backend.circuit import MAX_QUBITS
+from ..backend.editor import EditorSession, Placement
 from ..backend.gate_catalog import GATE_CATALOG
 from .arrow_spin_box import ArrowSpinBox
 from .basis_state_spin_box import BasisStateSpinBox
-from .circuit_view import CircuitView, PlacedGate
+from .circuit_view import CircuitView
 from .flow_layout import FlowLayout
 from .gate_button import GateButton
 from .styles import WINDOW_STYLE
@@ -58,7 +60,7 @@ def _section_title(text: str) -> QLabel:
 
 
 class SimulatorWindow(QMainWindow):
-    """Manage gate placement, run the circuit, and display or measure its final state."""
+    """Forward edits to the editor session, run the circuit, and display or measure its final state."""
 
     def __init__(self):
         super().__init__()
@@ -67,11 +69,7 @@ class SimulatorWindow(QMainWindow):
         self.setMinimumSize(720, 560)
         self.setStyleSheet(WINDOW_STYLE)
 
-        self._gates: list[PlacedGate] = []
-        self._selected_gate = "H"
-        self._pending_step: int | None = None
-        self._pending_wires: tuple[int, ...] = ()
-        self._result_state: QuantumState | None = None
+        self.session = EditorSession(qubits=2)
         self._run_steps: Iterator[None] | None = None
         self._run_timer = QTimer(self)
         self._run_timer.timeout.connect(self._advance_run)
@@ -131,7 +129,7 @@ class SimulatorWindow(QMainWindow):
 
         self.qubit_count = ArrowSpinBox()
         self.qubit_count.setObjectName("qubitCount")
-        self.qubit_count.setRange(1, 12)
+        self.qubit_count.setRange(1, MAX_QUBITS)
         self.qubit_count.setValue(2)
         self.qubit_count.setMinimumSize(64, 30)
         qubits_label = QLabel("&Qubits")
@@ -180,7 +178,7 @@ class SimulatorWindow(QMainWindow):
             group.addButton(button)
             buttons.addWidget(button)
             self.gate_buttons[gate_id] = button
-        self.gate_buttons[self._selected_gate].setChecked(True)
+        self.gate_buttons[self.session.selected_gate].setChecked(True)
         palette.addLayout(buttons, 1)
         return palette
 
@@ -251,91 +249,70 @@ class SimulatorWindow(QMainWindow):
         with QSignalBlocker(self.initial_state), QSignalBlocker(self.initial_state.lineEdit()):
             self.initial_state.set_qubit_count(count)
 
-        self._gates = [gate for gate in self._gates if max(gate.wires) < count]
+        self.session.set_qubit_count(count)
         for gate_id, button in self.gate_buttons.items():
-            button.setEnabled(GATE_CATALOG[gate_id].wire_count <= count)
-        if not self.gate_buttons[self._selected_gate].isEnabled():
-            self._selected_gate = "H"
-            self.gate_buttons["H"].setChecked(True)
-        self._reset_placement()
+            button.setEnabled(self.session.fits(gate_id))
+        self.gate_buttons[self.session.selected_gate].setChecked(True)
+        self._refresh_circuit()
         self._invalidate_results()
 
-    def _select_gate(self, name: str) -> None:
-        self._selected_gate = name
-        self.gate_buttons[name].setChecked(True)
-        self._reset_placement()
-
-    def _drop_gate(self, name: str, step: int, wire: int) -> None:
-        button = self.gate_buttons.get(name)
-        if button is None or not button.isEnabled():
-            return
-        if name != self._selected_gate:
-            self._select_gate(name)
-        self._place_gate(step, wire)
-
-    def _reset_placement(self) -> None:
-        self._pending_step = None
-        self._pending_wires = ()
+    def _select_gate(self, gate_id: str) -> None:
+        self.session.select_gate(gate_id)
+        self.gate_buttons[gate_id].setChecked(True)
         self._refresh_circuit()
 
+    def _drop_gate(self, gate_id: str, step: int, wire: int) -> None:
+        button = self.gate_buttons.get(gate_id)
+        if button is None or not button.isEnabled():
+            return
+        if gate_id != self.session.selected_gate:
+            self._select_gate(gate_id)
+        self._place_gate(step, wire)
+
     def _refresh_circuit(self) -> None:
+        session = self.session
         self.circuit_view.render_circuit(
-            n_qubits=self.qubit_count.value(),
-            gates=self._gates,
-            pending_step=self._pending_step,
-            pending_wires=self._pending_wires,
+            n_qubits=session.qubits,
+            gates=session.gates,
+            pending_step=session.pending_step,
+            pending_wires=session.pending_wires,
         )
-        self.clear_button.setEnabled(bool(self._gates or self._pending_wires))
-        if self._pending_step is None:
+        self.clear_button.setEnabled(bool(session.gates or session.pending_wires))
+        role = session.pending_role
+        if role is None:
             self.circuit_hint.setText("Drag gates onto wires. Right-click a gate to remove it.")
         else:
-            spec = GATE_CATALOG[self._selected_gate]
-            role = spec.wire_roles[len(self._pending_wires)]
-            step_number = self._pending_step + 1
+            label = GATE_CATALOG[session.selected_gate].label
+            step_number = session.pending_step + 1
             self.circuit_hint.setText(
-                f"Choose the {role} in step {step_number}. Click a wire or drop {spec.label} again."
+                f"Choose the {role} in step {step_number}. Click a wire or drop {label} again."
             )
 
     def _place_gate(self, step: int, wire: int) -> None:
-        # Choosing another column starts a new gate at its first wire.
-        if self._pending_step is not None and self._pending_step != step:
-            self._reset_placement()
-
-        if wire in self._pending_wires:
+        placement = self.session.place(step, wire)
+        self._refresh_circuit()
+        if placement is Placement.REPEATED_WIRE:
             self.circuit_hint.setText("Choose a different wire in this step.")
-            return
-
-        chosen_wires = self._pending_wires + (wire,)
-        gate = PlacedGate(step, self._selected_gate, chosen_wires)
-        if any(gate.overlaps(placed_gate) for placed_gate in self._gates):
+        elif placement is Placement.BLOCKED:
             self.circuit_hint.setText("A gate already crosses these wires in this step.")
-            return
-
-        if len(chosen_wires) < GATE_CATALOG[gate.name].wire_count:
-            self._pending_step = step
-            self._pending_wires = chosen_wires
-            self._refresh_circuit()
-            return
-
-        self._gates.append(gate)
-        self._reset_placement()
-        self._invalidate_results()
+        elif placement is Placement.PLACED:
+            self._invalidate_results()
 
     def _remove_gate(self, step: int, wire: int) -> None:
-        for gate in self._gates:
-            if gate.step == step and wire in gate.wire_span:
-                self._gates.remove(gate)
-                self._invalidate_results()
-                break
-        self._reset_placement()
+        removed = self.session.remove_at(step, wire)
+        self._refresh_circuit()
+        if removed:
+            self._invalidate_results()
 
     def _clear_circuit(self) -> None:
-        self._gates.clear()
-        self._reset_placement()
+        self.session.clear()
+        self._refresh_circuit()
         self._invalidate_results()
 
     def _invalidate_results(self) -> None:
-        self._result_state = None
+        if self._run_steps is not None:
+            self._finish_run()
+        self.session.invalidate_result()
         self.measure_button.setEnabled(False)
         self.results_table.setRowCount(0)
         self._update_run_availability()
@@ -343,7 +320,7 @@ class SimulatorWindow(QMainWindow):
     def _update_run_availability(self) -> None:
         valid_basis = self.initial_state.hasAcceptableInput()
         self.run_button.setEnabled(valid_basis)
-        if self._result_state is not None:
+        if self.session.result is not None:
             return
         if valid_basis:
             self.result_summary.setText("Run the circuit to see results.")
@@ -354,8 +331,10 @@ class SimulatorWindow(QMainWindow):
     def _run(self) -> None:
         if self._run_steps is not None or not self.initial_state.hasAcceptableInput():
             return
-        if self._pending_wires:
-            self._reset_placement()
+        # A gate still waiting for wires is not part of the circuit, so drop it.
+        if self.session.pending_wires:
+            self.session.reset_placement()
+            self._refresh_circuit()
         self._invalidate_results()
         self._run_steps = self._simulate(self.initial_state.text())
         self.pages.setCurrentWidget(self.loading_screen)
@@ -383,28 +362,13 @@ class SimulatorWindow(QMainWindow):
 
     def closeEvent(self, event: QCloseEvent) -> None:
         if self._run_steps is not None:
-            self._finish_run()
             self._invalidate_results()
         super().closeEvent(event)
 
     def _simulate(self, basis: str) -> Iterator[None]:
-        state = QuantumState(len(basis))
-        state.initialize(basis)
-
-        for step in self._apply_circuit_gates(state):
-            yield step
-
-        for step in self._display_results(state):
-            yield step
-
-        self._result_state = state
+        yield from self.session.run_steps(basis)
+        yield from self._display_results(self.session.result)
         self.measure_button.setEnabled(True)
-
-    def _apply_circuit_gates(self, state: QuantumState) -> Iterator[None]:
-        # Gates may be placed in any order. Time steps determine the execution order.
-        for gate in sorted(self._gates, key=lambda gate: gate.step):
-            state.apply_gate(gate.name, *gate.wires)
-            yield
 
     def _display_results(self, state: QuantumState) -> Iterator[None]:
         outcome_count = 0
@@ -420,10 +384,10 @@ class SimulatorWindow(QMainWindow):
         self.result_summary.setText(f"{outcome_count} nonzero {label}")
 
     def _measure(self) -> None:
-        if self._result_state is None:
+        if self.session.result is None:
             return
 
-        basis = self._result_state.measure()
+        basis = self.session.result.measure()
         self.results_table.setRowCount(1)
         self._set_outcome_row(0, Outcome(basis, 1 + 0j, 1.0))
         self.result_summary.setText(f"Measured |{basis}⟩")

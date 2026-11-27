@@ -6,12 +6,13 @@ import unittest
 import weakref
 from unittest.mock import patch
 
+from numpy.testing import assert_array_equal
 from PySide6.QtCore import QEvent, QMimeData, QPointF, Qt
 from PySide6.QtGui import QDragEnterEvent, QDropEvent
-from PySide6.QtTest import QSignalSpy
+from PySide6.QtTest import QSignalSpy, QTest
 from PySide6.QtWidgets import QApplication
 
-from quantum_simulator.backend import QuantumState
+from quantum_simulator.backend import Circuit, PlacedGate, QuantumState, run
 from quantum_simulator.gui.gate_button import GATE_MIME_TYPE
 from quantum_simulator.gui.window import SimulatorWindow
 
@@ -53,9 +54,32 @@ class WindowTestCase(unittest.TestCase):
         QApplication.sendEvent(view.viewport(), drop)
         self.assertTrue(drop.isAccepted())
 
+    def right_click_cell(self, step, wire):
+        view = self.window.circuit_view
+        position = view.mapFromScene(view.cell_center(step, wire))
+        QTest.mouseClick(view.viewport(), Qt.MouseButton.RightButton, Qt.KeyboardModifier.NoModifier, position)
+
 
 class TestGatePlacement(WindowTestCase):
     """Check how wire selections become complete gates in the editor."""
+
+    def test_drag_bell_pair_after_removing_a_gate(self):
+        """Dragging H and CNOT after right-clicking away a stray X gives the Python Bell state."""
+        window = self.window
+        self.drop_gate("X", 0, 1)
+        self.right_click_cell(0, 1)
+        self.drop_gate("H", 0, 0)
+        self.drop_gate("CNOT", 1, 0)
+        self.drop_gate("CNOT", 1, 1)
+        window.run_button.click()
+        self.wait_for_editor()
+
+        table = window.results_table
+        rows = [(table.item(row, 0).text(), table.item(row, 1).text()) for row in range(table.rowCount())]
+        self.assertEqual(rows, [("00", "0.7071"), ("11", "0.7071")])
+
+        bell = Circuit(2, "00", (PlacedGate(0, "H", (0,)), PlacedGate(1, "CNOT", (0, 1))))
+        assert_array_equal(window.session.result.amplitudes, run(bell).amplitudes)
 
     def test_drag_cy_onto_reversed_nonadjacent_wires(self):
         """Dragging CY from q3 to q0 turns 0001 into +i on 1001. From q0 to q3, 0001 is unchanged."""
@@ -195,7 +219,7 @@ class TestMemoryLifetime(WindowTestCase):
             window.run_button.click()
             self.wait_for_editor()
             # A weak reference lets the test observe a state without keeping it alive.
-            results.append(weakref.ref(window._result_state))
+            results.append(weakref.ref(window.session.result))
 
         gc.collect()
         for previous in results[:-1]:

@@ -3,7 +3,7 @@
 - Read the [task tracker](docs/tasks.md) before making changes. Keep changes scoped to the task and flag decisions it depends on.
 - Preserve the original course files, including notebook check cells. Put project code and tests in `src/` and `tests/`.
 - Follow the [course AI rule](docs/tasks.md#ai-use).
-- Follow the [test instructions](README.md#tests) to run the unit tests.
+- Place each test in the [quantum or application suite](README.md#tests) according to the behavior it verifies. Follow the linked instructions to run the tests.
 - Suggest documenting agreed simulator design decisions in project docs and recurring implementation conventions here. Suggest a skill when a multi-step workflow recurs.
 - Record agreed simulator design decisions that affect multiple contributors in the project docs. Keep recurring coding and verification conventions in AGENTS.md.
 

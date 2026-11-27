@@ -63,7 +63,8 @@ class ChecklistResult(unittest.TextTestResult):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._report_groups: dict[str, dict[unittest.TestCase, TestReportEntry]] = {}
+        self._report_groups: dict[tuple[str, str], dict[unittest.TestCase, TestReportEntry]] = {}
+        self._console_section = None
 
     def _report(self, test, marker, status, detail=""):
         entry = self._report_entry(test)
@@ -73,11 +74,22 @@ class ChecklistResult(unittest.TextTestResult):
 
     def _report_entry(self, test) -> TestReportEntry:
         module = type(test).__module__
-        group = "Runner" if module.startswith("unittest.") else module.rsplit(".", 1)[-1]
+        package, _, topic = module.partition(".")
+        if package in ("quantum", "application"):
+            section = f"{package.capitalize()} tests"
+            title = _group_title(topic.rsplit(".", 1)[-1])
+        else:
+            section = "Test runner"
+            title = _group_title(module.rsplit(".", 1)[-1])
+        group = (section, title)
         if group not in self._report_groups:
             if self._report_groups:
                 self.stream.writeln()
-            self.stream.writeln(_group_title(group))
+            if section != self._console_section:
+                self.stream.writeln(section)
+                self.stream.writeln()
+                self._console_section = section
+            self.stream.writeln(title)
             self._report_groups[group] = {}
         entries = self._report_groups[group]
         if test not in entries:
@@ -147,8 +159,12 @@ class ChecklistResult(unittest.TextTestResult):
         outcome = "✅ Passed" if self.wasSuccessful() else "❌ Failed"
         count = f"{self.testsRun} {'test' if self.testsRun == 1 else 'tests'}"
         lines = ["# Test results", "", f"**{outcome}** · {count} run"]
-        for group, entries in self._report_groups.items():
-            lines.extend(("", f"## {_group_title(group)}", ""))
+        previous_section = None
+        for (section, title), entries in self._report_groups.items():
+            if section != previous_section:
+                lines.extend(("", f"## {section}"))
+                previous_section = section
+            lines.extend(("", f"### {title}", ""))
             for test, entry in entries.items():
                 source = _test_source_url(test, destination)
                 label = _link_label(entry.description, source)
@@ -177,14 +193,15 @@ class ChecklistRunner(unittest.TextTestRunner):
         super().__init__(stream=stream, verbosity=0)
 
 
-def _checklist_order(suite: unittest.TestSuite) -> int:
+def _checklist_order(suite: unittest.TestSuite) -> tuple[bool, int]:
     first_topics = ("test_gate_properties", "test_gates", "test_circuit_equivalences", "test_circuit_results")
     # Discovery nests test classes inside each module's suite.
     test = suite
     while isinstance(test, unittest.TestSuite):
         test = next(iter(test), None)
-    module = type(test).__module__
-    return first_topics.index(module) if module in first_topics else len(first_topics)
+    package, _, topic = type(test).__module__.partition(".")
+    priority = first_topics.index(topic) if topic in first_topics else len(first_topics)
+    return package != "quantum", priority
 
 
 def main() -> int:

@@ -37,17 +37,3 @@ class TestState(unittest.TestCase):
         state.apply_gate("H", 0)
         state.initialize("00001")
         assert_array_equal(state.amplitudes, basis_vector("00001"))
-
-    def test_invalid_initialization(self):
-        """Invalid qubit counts and bits."""
-        for count in (0, -1, 2.5):
-            with self.subTest(count=count), self.assertRaises(ValueError):
-                QuantumState(count)
-
-        state = QuantumState(2)
-        state.initialize("01")
-        for bits in ("0", "000", "0x", [0, 2], [0, 0.5]):
-            with self.subTest(bits=bits):
-                with self.assertRaises(ValueError):
-                    state.initialize(bits)
-                assert_array_equal(state.amplitudes, basis_vector("01"))

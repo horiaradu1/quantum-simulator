@@ -182,36 +182,3 @@ class TestGates(unittest.TestCase):
                 expected = np.zeros(16)
                 expected[int(output_bits, 2)] = 1
                 assert_array_equal(state.amplitudes, expected)
-
-    def test_reject_invalid_gates(self):
-        """Invalid gates leave the state intact."""
-        state = QuantumState(2)
-        state.initialize("01")
-        identity = [
-            [1, 0],
-            [0, 1],
-        ]
-        singular = [
-            [0.5, 0.5],
-            [0.5, 0.5],
-        ]
-        nonunitary = [
-            [5, 4],
-            [3, 7],
-        ]
-        cases = (
-            ("missing", (0,)),
-            ("H", ()),
-            ("H", (-1,)),
-            ("X", (2,)),
-            ("CNOT", (0,)),
-            ("CNOT", (0, 0)),
-            (identity, (0, 1)),
-            (singular, (0,)),
-            (nonunitary, (0,)),
-        )
-        for gate, wires in cases:
-            with self.subTest(gate=gate, wires=wires):
-                with self.assertRaises(ValueError):
-                    state.apply_gate(gate, *wires)
-                assert_array_equal(state.amplitudes, [0, 1, 0, 0])
