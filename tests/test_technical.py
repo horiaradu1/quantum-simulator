@@ -6,11 +6,13 @@ import unittest
 import weakref
 from unittest.mock import patch
 
-from PySide6.QtCore import QEvent
+from PySide6.QtCore import QEvent, QMimeData, QPointF, Qt
+from PySide6.QtGui import QDragEnterEvent, QDropEvent
 from PySide6.QtTest import QSignalSpy
 from PySide6.QtWidgets import QApplication
 
 from quantum_simulator.backend import QuantumState
+from quantum_simulator.gui.gate_button import GATE_MIME_TYPE
 from quantum_simulator.gui.window import SimulatorWindow
 
 
@@ -39,9 +41,43 @@ class WindowTestCase(unittest.TestCase):
         self.assertTrue(switched.wait(5000))
         self.assertFalse(self.window.loading_screen.isVisible())
 
+    def drop_gate(self, gate_id, step, wire):
+        # Send the events a palette drag delivers, so the canvas's own drop handlers run.
+        view = self.window.circuit_view
+        mime = QMimeData()
+        mime.setData(GATE_MIME_TYPE, gate_id.encode("utf-8"))
+        position = QPointF(view.mapFromScene(view.cell_center(step, wire)))
+        drag = (Qt.DropAction.CopyAction, mime, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
+        QApplication.sendEvent(view.viewport(), QDragEnterEvent(position, *drag))
+        drop = QDropEvent(position, *drag)
+        QApplication.sendEvent(view.viewport(), drop)
+        self.assertTrue(drop.isAccepted())
+
 
 class TestGatePlacement(WindowTestCase):
     """Check how wire selections become complete gates in the editor."""
+
+    def test_drag_cy_onto_reversed_nonadjacent_wires(self):
+        """Dragging CY from q3 to q0 turns 0001 into +i on 1001. From q0 to q3, 0001 is unchanged."""
+        window = self.window
+        window.qubit_count.setValue(4)
+        cases = (
+            ((3, 0), "1001", "0.0000+1.0000i"),
+            ((0, 3), "0001", "1.0000"),
+        )
+        for wires, basis, amplitude in cases:
+            with self.subTest(wires=wires):
+                window.clear_button.click()
+                window.initial_state.setValue(0b0001)
+                for wire in wires:
+                    self.drop_gate("CY", 0, wire)
+                window.run_button.click()
+                self.wait_for_editor()
+
+                table = window.results_table
+                self.assertEqual(table.rowCount(), 1)
+                self.assertEqual(table.item(0, 0).text(), basis)
+                self.assertEqual(table.item(0, 1).text(), amplitude)
 
     def test_retry_cnot_target(self):
         """A CNOT keeps its control after a duplicate or blocked target."""

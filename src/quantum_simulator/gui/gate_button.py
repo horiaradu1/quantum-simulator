@@ -9,11 +9,11 @@ GATE_MIME_TYPE = "application/x-quantum-simulator-gate"
 
 
 class GateButton(QPushButton):
-    """Carry the gate name from the palette to a drop target on the circuit."""
+    """Carry the gate ID from the palette to a drop target on the circuit."""
 
-    def __init__(self, gate_name: str):
-        super().__init__("Toffoli" if gate_name == "TOFFOLI" else gate_name)
-        self.gate_name = gate_name
+    def __init__(self, gate_id: str, label: str):
+        super().__init__(label)
+        self.gate_id = gate_id
         self._press_position: QPoint | None = None
         self.setCursor(Qt.CursorShape.OpenHandCursor)
         self.setToolTip(f"Drag {self.text()} onto a circuit wire")
@@ -42,7 +42,7 @@ class GateButton(QPushButton):
 
     def _start_drag(self, press_position: QPoint) -> None:
         mime_data = QMimeData()
-        mime_data.setData(GATE_MIME_TYPE, self.gate_name.encode("utf-8"))
+        mime_data.setData(GATE_MIME_TYPE, self.gate_id.encode("utf-8"))
         drag = QDrag(self)
         drag.setMimeData(mime_data)
         drag.setPixmap(self.grab())

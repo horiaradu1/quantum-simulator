@@ -29,6 +29,12 @@ class TestCircuitEquivalences(unittest.TestCase):
             with self.subTest(gate=gate):
                 self.assert_circuits_match(((gate, 1), (gate, 1)), ((squared_gate, 1),))
 
+    def test_controlled_phase_gate_powers(self):
+        """CT twice gives CS and CS twice gives CZ on reversed, nonadjacent wires."""
+        for gate, squared_gate in (("CT", "CS"), ("CS", "CZ")):
+            with self.subTest(gate=gate):
+                self.assert_circuits_match(((gate, 3, 1), (gate, 3, 1)), ((squared_gate, 3, 1),))
+
     def test_hadamard_conjugation(self):
         """H, X, H gives Z."""
         self.assert_circuits_match((("H", 1), ("X", 1), ("H", 1)), (("Z", 1),))

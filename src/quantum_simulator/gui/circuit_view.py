@@ -1,6 +1,6 @@
 """Draw the circuit grid and translate clicks and gate drops into wire and step positions."""
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from math import floor
 
@@ -21,6 +21,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QFrame, QGraphicsScene, QGraphicsView, QWidget
 
+from ..backend.gate_catalog import GATE_CATALOG, GateSpec, WireMark
 from .gate_button import GATE_MIME_TYPE
 from .styles import ACCENT, BORDER, INK, LAVENDER, SURFACE
 
@@ -30,6 +31,8 @@ _GRID_TOP = 32
 _GRID_PADDING = 16
 _STEP_WIDTH = 86
 _WIRE_HEIGHT = 64
+_BOX_SIZE = 34
+_NAMED_BOX_WIDTH = 62
 
 _CANVAS = QColor("#fcfbff")
 _GRID = QColor(BORDER)
@@ -66,8 +69,11 @@ class CircuitView(QGraphicsView):
     cell_removed = Signal(int, int)
     gate_dropped = Signal(str, int, int)
 
-    def __init__(self, parent: QWidget | None = None):
+    def __init__(
+        self, parent: QWidget | None = None, *, catalog: Mapping[str, GateSpec] = GATE_CATALOG
+    ):
         super().__init__(parent)
+        self._catalog = catalog
         self._n_qubits = 0
         self._steps = _MIN_STEPS
         self._gates: tuple[PlacedGate, ...] = ()
@@ -289,39 +295,69 @@ class CircuitView(QGraphicsView):
         painter.restore()
 
     def _draw_gate(self, gate: PlacedGate) -> None:
-        points = [self.cell_center(gate.step, wire) for wire in gate.wires]
-        if len(points) == 1:
-            self._add_box(gate.name, points[0])
-            return
-
-        scene = self.scene()
-        pen = QPen(_ACCENT, 1.75)
-        x = points[0].x()
-        rows = [point.y() for point in points]
-        scene.addLine(x, min(rows), x, max(rows), pen)
-        if gate.name == "SWAP":
-            for y in rows:
-                scene.addLine(x - 8, y - 8, x + 8, y + 8, pen)
-                scene.addLine(x - 8, y + 8, x + 8, y - 8, pen)
-            return
-
-        # For controlled gates the last selected wire is the target.
-        control_points = points[:-1]
-        target = points[-1]
-        for control in control_points:
-            scene.addEllipse(control.x() - 4, control.y() - 4, 8, 8, pen, QBrush(_ACCENT))
-
-        if gate.name == "CH":
-            self._add_box("H", target)
+        spec = self._catalog[gate.name]
+        if spec.symbols is not None:
+            self._draw_symbols(gate, spec.symbols)
+        elif len(gate.wires) == 1:
+            self._add_box(spec.label, self.cell_center(gate.step, gate.wires[0]))
         else:
-            y = target.y()
-            scene.addEllipse(x - 11, y - 11, 22, 22, pen, QBrush(_GATE_FILL))
-            scene.addLine(x - 7, y, x + 7, y, pen)
-            scene.addLine(x, y - 7, x, y + 7, pen)
+            self._draw_named_box(gate, spec.label)
+
+    def _draw_symbols(self, gate: PlacedGate, symbols: Sequence[WireMark | str]) -> None:
+        points = [self.cell_center(gate.step, wire) for wire in gate.wires]
+        pen = QPen(_ACCENT, 1.75)
+        if len(points) > 1:
+            rows = [point.y() for point in points]
+            x = points[0].x()
+            self.scene().addLine(x, min(rows), x, max(rows), pen)
+
+        for point, symbol in zip(points, symbols, strict=True):
+            match symbol:
+                case WireMark.CONTROL:
+                    self._add_control(point, pen)
+                case WireMark.NOT:
+                    self._add_not(point, pen)
+                case WireMark.SWAP:
+                    self._add_swap(point, pen)
+                case str(text):
+                    self._add_box(text, point)
+
+    def _draw_named_box(self, gate: PlacedGate, label: str) -> None:
+        rows = [self.cell_center(gate.step, wire).y() for wire in gate.wires]
+        x = self.cell_center(gate.step, 0).x()
+        left = x - _NAMED_BOX_WIDTH / 2
+        top = min(rows) - _BOX_SIZE / 2
+        bottom = max(rows) + _BOX_SIZE / 2
+        self.scene().addRect(
+            left, top, _NAMED_BOX_WIDTH, bottom - top, QPen(_ACCENT, 1.5), QBrush(_GATE_FILL),
+        )
+        self._add_label(label, QPointF(x, (top + bottom) / 2), 12, _INK)
+
+        # Number the participating wires in gate order. Other wires inside the box stay unmarked.
+        for position, y in enumerate(rows):
+            self._add_label(str(position), QPointF(left + 8, y), 8, _ACCENT)
+
+    def _add_control(self, center: QPointF, pen: QPen) -> None:
+        self.scene().addEllipse(center.x() - 4, center.y() - 4, 8, 8, pen, QBrush(_ACCENT))
+
+    def _add_not(self, center: QPointF, pen: QPen) -> None:
+        x, y = center.toTuple()
+        scene = self.scene()
+        scene.addEllipse(x - 11, y - 11, 22, 22, pen, QBrush(_GATE_FILL))
+        scene.addLine(x - 7, y, x + 7, y, pen)
+        scene.addLine(x, y - 7, x, y + 7, pen)
+
+    def _add_swap(self, center: QPointF, pen: QPen) -> None:
+        x, y = center.toTuple()
+        scene = self.scene()
+        scene.addLine(x - 8, y - 8, x + 8, y + 8, pen)
+        scene.addLine(x - 8, y + 8, x + 8, y - 8, pen)
 
     def _add_box(self, label: str, center: QPointF) -> None:
+        half = _BOX_SIZE / 2
         self.scene().addRect(
-            center.x() - 17, center.y() - 17, 34, 34, QPen(_ACCENT, 1.5), QBrush(_GATE_FILL),
+            center.x() - half, center.y() - half, _BOX_SIZE, _BOX_SIZE,
+            QPen(_ACCENT, 1.5), QBrush(_GATE_FILL),
         )
         self._add_label(label, center, 12, _INK)
 

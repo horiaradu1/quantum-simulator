@@ -94,6 +94,58 @@ class TestGates(unittest.TestCase):
         ]
         self.assert_gate_matrix("CH", 2, matrix)
 
+    def test_2_qubit_cy(self):
+        """CY applies Y to the target only when the control is 1."""
+        self.assert_gate_matrix("CY", 2, [
+            [1, 0,  0,   0],
+            [0, 1,  0,   0],
+            [0, 0,  0, -1j],
+            [0, 0, 1j,   0],
+        ])
+
+    def test_2_qubit_cz(self):
+        """CZ negates the amplitude of 11 and leaves the other inputs unchanged."""
+        self.assert_gate_matrix("CZ", 2, [
+            [1, 0, 0,  0],
+            [0, 1, 0,  0],
+            [0, 0, 1,  0],
+            [0, 0, 0, -1],
+        ])
+
+    def test_2_qubit_cs(self):
+        """CS multiplies the amplitude of 11 by i."""
+        self.assert_gate_matrix("CS", 2, [
+            [1, 0, 0,  0],
+            [0, 1, 0,  0],
+            [0, 0, 1,  0],
+            [0, 0, 0, 1j],
+        ])
+
+    def test_2_qubit_ct(self):
+        """CT multiplies the amplitude of 11 by e^(iπ/4)."""
+        self.assert_gate_matrix("CT", 2, [
+            [1, 0, 0,                  0],
+            [0, 1, 0,                  0],
+            [0, 0, 1,                  0],
+            [0, 0, 0, (1 + 1j) / sqrt(2)],
+        ])
+
+    def test_2_qubit_controlled_gates_on_superposed_control(self):
+        """With the control in |+> and the target in |1>, only the control-1 branch changes."""
+        cases = (
+            ("CY", np.array([0, 1, -1j, 0]) / sqrt(2)),
+            ("CZ", np.array([0, 1, 0, -1]) / sqrt(2)),
+            ("CS", np.array([0, 1, 0, 1j]) / sqrt(2)),
+            ("CT", np.array([0, 1, 0, (1 + 1j) / sqrt(2)]) / sqrt(2)),
+        )
+        for gate, expected in cases:
+            with self.subTest(gate=gate):
+                state = QuantumState(2)
+                state.initialize("01")
+                state.apply_gate("H", 0)
+                state.apply_gate(gate, 0, 1)
+                assert_allclose(state.amplitudes, expected, atol=1e-12)
+
     def test_2_qubit_cnot(self):
         """CNOT truth table."""
         self.assert_gate_permutation("CNOT", 2, (0, 1, 3, 2))

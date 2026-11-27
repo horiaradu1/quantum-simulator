@@ -40,7 +40,7 @@ It prints a checklist and writes the latest results to [`tests/test_results.md`]
 
 ## Project layout
 
-- `src/quantum_simulator/backend/` — gate matrices in `gates.py` and state simulation in `state.py`
+- `src/quantum_simulator/backend/` — gate matrices in `gates.py`, palette and drawing details in `gate_catalog.py`, and state simulation in `state.py`
 - `src/quantum_simulator/gui/` — desktop window and circuit drawing
 - `tests/` — gate, circuit, measurement, and state tests, plus the checklist runner
 - `pyproject.toml` — package configuration and dependency declarations

@@ -32,7 +32,10 @@ class Outcome:
 
 
 class QuantumState:
-    """An n-qubit state vector with qubit 0 as the leftmost basis bit."""
+    """An n-qubit state vector with qubit 0 as the leftmost basis bit.
+
+    The order is big-endian. Quirk and Qiskit are little-endian, so reverse their bitstrings.
+    """
 
     def __init__(self, n_qubits: int, *, rng: np.random.Generator | None = None):
         try:
@@ -81,8 +84,8 @@ class QuantumState:
     def apply_gate(self, gate: str | ArrayLike, *qubits: int) -> None:
         """Apply a named gate or unitary matrix in the given wire order.
 
-        CNOT and CH take the control first, CNOT10 takes it second, and
-        Toffoli takes both controls before the target.
+        Controlled gates such as CNOT and CY take the control first, CNOT10
+        takes it second, and Toffoli takes both controls before the target.
         """
         gate_wires = self._validate_wires(qubits)
         matrix = gate_matrix(gate, len(gate_wires))

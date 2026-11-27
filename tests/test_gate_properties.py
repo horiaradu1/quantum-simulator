@@ -21,9 +21,9 @@ class TestGateProperties(unittest.TestCase):
                 assert_allclose(adjoint @ matrix, np.eye(rows), rtol=0, atol=1e-12)
 
     def test_builtin_gate_hermiticity(self):
-        """All built-in gates except S and T are Hermitian."""
-        hermitian_gates = ("H", "X", "Y", "Z", "CNOT", "CNOT10", "CH", "SWAP", "TOFFOLI")
-        phase_gates = ("S", "T")
+        """All built-in gates except S, T, CS and CT are Hermitian."""
+        hermitian_gates = ("H", "X", "Y", "Z", "CNOT", "CNOT10", "CH", "CY", "CZ", "SWAP", "TOFFOLI")
+        phase_gates = ("S", "T", "CS", "CT")
         for expected, gates in ((True, hermitian_gates), (False, phase_gates)):
             for gate in gates:
                 with self.subTest(gate=gate):

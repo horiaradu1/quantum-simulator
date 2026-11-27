@@ -1,6 +1,7 @@
 """Gate matrices in computational basis order, with input states as columns.
 
 gate_matrix looks up a built-in gate or validates a user-supplied matrix.
+controlled adds a control wire to a gate matrix.
 """
 
 from math import sqrt
@@ -39,24 +40,13 @@ _SINGLE_QUBIT_GATES = {
 
 # Multi-qubit gates use the first listed wire as the leftmost basis bit.
 _MULTI_QUBIT_GATES = {
-    "CNOT": np.array([
-        [1, 0, 0, 0],
-        [0, 1, 0, 0],
-        [0, 0, 0, 1],
-        [0, 0, 1, 0],
-    ], dtype=complex),
     # Reverse CNOT uses the second wire as the control.
+    # TODO: Remove CNOT10 and use CNOT on swapped wires.
     "CNOT10": np.array([
         [1, 0, 0, 0],
         [0, 0, 0, 1],
         [0, 0, 1, 0],
         [0, 1, 0, 0],
-    ], dtype=complex),
-    "CH": np.array([
-        [1, 0,           0,            0],
-        [0, 1,           0,            0],
-        [0, 0, 1 / sqrt(2),  1 / sqrt(2)],
-        [0, 0, 1 / sqrt(2), -1 / sqrt(2)],
     ], dtype=complex),
     "SWAP": np.array([
         [1, 0, 0, 0],
@@ -64,19 +54,33 @@ _MULTI_QUBIT_GATES = {
         [0, 1, 0, 0],
         [0, 0, 0, 1],
     ], dtype=complex),
-    "TOFFOLI": np.array([
-        [1, 0, 0, 0, 0, 0, 0, 0],
-        [0, 1, 0, 0, 0, 0, 0, 0],
-        [0, 0, 1, 0, 0, 0, 0, 0],
-        [0, 0, 0, 1, 0, 0, 0, 0],
-        [0, 0, 0, 0, 1, 0, 0, 0],
-        [0, 0, 0, 0, 0, 1, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0, 1],
-        [0, 0, 0, 0, 0, 0, 1, 0],
-    ], dtype=complex),
 }
 
-_GATES = _SINGLE_QUBIT_GATES | _MULTI_QUBIT_GATES
+
+def controlled(base: NDArray[np.complex128]) -> NDArray[np.complex128]:
+    """Add one control before the base gate's wires.
+
+    The control is the leftmost basis bit, so the base gate fills the block where it is 1.
+    """
+    size = base.shape[0]
+    matrix = np.eye(2 * size, dtype=complex)
+    matrix[size:, size:] = base
+    return matrix
+
+
+# Controlled gates take the control first, followed by the base gate's wires.
+_CONTROLLED_GATES = {
+    "CNOT": controlled(_SINGLE_QUBIT_GATES["X"]),
+    "CH": controlled(_SINGLE_QUBIT_GATES["H"]),
+    "CY": controlled(_SINGLE_QUBIT_GATES["Y"]),
+    "CZ": controlled(_SINGLE_QUBIT_GATES["Z"]),
+    "CS": controlled(_SINGLE_QUBIT_GATES["S"]),
+    "CT": controlled(_SINGLE_QUBIT_GATES["T"]),
+}
+# Toffoli controls a CNOT, so it takes both controls before the target.
+_CONTROLLED_GATES["TOFFOLI"] = controlled(_CONTROLLED_GATES["CNOT"])
+
+_GATES = _SINGLE_QUBIT_GATES | _MULTI_QUBIT_GATES | _CONTROLLED_GATES
 
 
 def gate_matrix(gate: str | ArrayLike, wire_count: int) -> NDArray[np.complex128]:

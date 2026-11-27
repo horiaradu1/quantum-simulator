@@ -29,24 +29,13 @@ from PySide6.QtWidgets import (
 )
 
 from ..backend import Outcome, QuantumState
+from ..backend.gate_catalog import GATE_CATALOG
 from .arrow_spin_box import ArrowSpinBox
 from .basis_state_spin_box import BasisStateSpinBox
 from .circuit_view import CircuitView, PlacedGate
+from .flow_layout import FlowLayout
 from .gate_button import GateButton
 from .styles import WINDOW_STYLE
-
-_GATE_ROLES = {
-    "H": ("target",),
-    "X": ("target",),
-    "Y": ("target",),
-    "Z": ("target",),
-    "S": ("target",),
-    "T": ("target",),
-    "CNOT": ("control", "target"),
-    "CH": ("control", "target"),
-    "SWAP": ("first wire", "second wire"),
-    "TOFFOLI": ("first control", "second control", "target"),
-}
 
 _DISPLAY_TOLERANCE = 1e-12
 _LOGO_PATH = Path(__file__).with_name("assets") / "MScQCLogo.png"
@@ -175,19 +164,24 @@ class SimulatorWindow(QMainWindow):
     def _build_gate_palette(self) -> QHBoxLayout:
         palette = QHBoxLayout()
         palette.setSpacing(6)
-        palette.addWidget(_section_title("Gates"))
+        title = _section_title("Gates")
+        palette.addWidget(title, 0, Qt.AlignmentFlag.AlignTop)
         palette.addSpacing(6)
+
+        # Buttons wrap onto more rows so every gate stays reachable at the minimum width.
+        buttons = FlowLayout()
+        buttons.setSpacing(6)
         group = QButtonGroup(self)
         self.gate_buttons: dict[str, GateButton] = {}
-        for gate in _GATE_ROLES:
-            button = GateButton(gate)
+        for gate_id, spec in GATE_CATALOG.items():
+            button = GateButton(gate_id, spec.label)
             button.setCheckable(True)
-            button.clicked.connect(partial(self._select_gate, gate))
+            button.clicked.connect(partial(self._select_gate, gate_id))
             group.addButton(button)
-            palette.addWidget(button)
-            self.gate_buttons[gate] = button
+            buttons.addWidget(button)
+            self.gate_buttons[gate_id] = button
         self.gate_buttons[self._selected_gate].setChecked(True)
-        palette.addStretch()
+        palette.addLayout(buttons, 1)
         return palette
 
     def _build_circuit(self) -> QFrame:
@@ -258,8 +252,8 @@ class SimulatorWindow(QMainWindow):
             self.initial_state.set_qubit_count(count)
 
         self._gates = [gate for gate in self._gates if max(gate.wires) < count]
-        for name, button in self.gate_buttons.items():
-            button.setEnabled(len(_GATE_ROLES[name]) <= count)
+        for gate_id, button in self.gate_buttons.items():
+            button.setEnabled(GATE_CATALOG[gate_id].wire_count <= count)
         if not self.gate_buttons[self._selected_gate].isEnabled():
             self._selected_gate = "H"
             self.gate_buttons["H"].setChecked(True)
@@ -295,11 +289,11 @@ class SimulatorWindow(QMainWindow):
         if self._pending_step is None:
             self.circuit_hint.setText("Drag gates onto wires. Right-click a gate to remove it.")
         else:
-            gate = self.gate_buttons[self._selected_gate].text()
-            role = _GATE_ROLES[self._selected_gate][len(self._pending_wires)]
+            spec = GATE_CATALOG[self._selected_gate]
+            role = spec.wire_roles[len(self._pending_wires)]
             step_number = self._pending_step + 1
             self.circuit_hint.setText(
-                f"Choose the {role} in step {step_number}. Click a wire or drop {gate} again."
+                f"Choose the {role} in step {step_number}. Click a wire or drop {spec.label} again."
             )
 
     def _place_gate(self, step: int, wire: int) -> None:
@@ -317,8 +311,7 @@ class SimulatorWindow(QMainWindow):
             self.circuit_hint.setText("A gate already crosses these wires in this step.")
             return
 
-        wire_roles = _GATE_ROLES[gate.name]
-        if len(chosen_wires) < len(wire_roles):
+        if len(chosen_wires) < GATE_CATALOG[gate.name].wire_count:
             self._pending_step = step
             self._pending_wires = chosen_wires
             self._refresh_circuit()

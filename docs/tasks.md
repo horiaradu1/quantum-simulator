@@ -6,7 +6,7 @@ You may use AI to develop the simulator if you understand the code. The team mus
 
 ## Simulator conventions
 
-The register starts in `|00…0⟩`. Basis labels put `q0` on the left. Gate calls list wires in matrix order, with CNOT and CH taking the control first and Toffoli taking both controls before the target.
+The register starts in `|00…0⟩`. Basis labels put `q0` on the left. Gate calls list wires in matrix order. Controlled gates such as CNOT, CH and CY take the control first, CNOT10 takes it second, and Toffoli takes both controls before the target.
 
 The simulator returns fixed-width basis labels from `sample()` and `measure()`. Sampling preserves the state. Measurement collapses the full register. `outcomes()` supplies basis labels, complex amplitudes, and probabilities for display.
 
@@ -35,18 +35,18 @@ The simulator returns fixed-width basis labels from `sample()` and `measure()`. 
 - ✅ Support for N-qubit states · `QuantumState` in [state.py](../src/quantum_simulator/backend/state.py)
 - ✅ Support for state initialization (by attributing a 0/1 value to each qubit) · `QuantumState.initialize()` in [state.py](../src/quantum_simulator/backend/state.py)
 - ✅ Single-qubit gates implementation: H, X, S · `_SINGLE_QUBIT_GATES` in [gates.py](../src/quantum_simulator/backend/gates.py)
-- ✅ Multi-qubit gates implementation: CNOT, CH, SWAP, TOFFOLI · `_MULTI_QUBIT_GATES` in [gates.py](../src/quantum_simulator/backend/gates.py)
+- ✅ Multi-qubit gates implementation: CNOT, CH, SWAP, TOFFOLI · `_MULTI_QUBIT_GATES` and `_CONTROLLED_GATES` in [gates.py](../src/quantum_simulator/backend/gates.py)
 - ✅ State amplitudes calculation and display · `QuantumState.apply_gate()` in [state.py](../src/quantum_simulator/backend/state.py) and `SimulatorWindow._display_results()` in [window.py](../src/quantum_simulator/gui/window.py)
 - ✅ Measurement · `QuantumState.sample()` and `QuantumState.measure()` in [state.py](../src/quantum_simulator/backend/state.py)
 
 ### B. Minor tasks (0.5p)
 
-- ⚪ Add the following gates: Y, Z, T, CY, CZ, CT, CS
+- ✅ Add the following gates: Y, Z, T, CY, CZ, CT, CS · `_SINGLE_QUBIT_GATES` and `_CONTROLLED_GATES` in [gates.py](../src/quantum_simulator/backend/gates.py)
 - ⚪ Support for user-defined gates given in matrix form
 - ⚪ Support for user-defined gates given as series of other defined gates
 - ⚪ Support for Controlled-U gate (where U is any already defined gate)
 - ⚪ Support for user-defined gates export and import
-- ✅ Allow controlled gates to have the control and the target on any of the N qubit (not necessarily adjacent)
+- ✅ Allow controlled gates to have the control and the target on any of the N qubit (not necessarily adjacent) · `QuantumState.apply_gate()` in [state.py](../src/quantum_simulator/backend/state.py)
 - ⚪ Allow measurement to be applied to any of the N qubits (not necessarily on the entire state)
 - ⚪ Support for circuit export and import
 - ⚪ Support for computing the density matrix of a given state
