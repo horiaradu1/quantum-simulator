@@ -162,6 +162,25 @@ class TestGates(unittest.TestCase):
         """Toffoli truth table."""
         self.assert_gate_permutation("TOFFOLI", 3, (0, 1, 2, 3, 4, 5, 7, 6))
 
+    def test_control_wires(self):
+        """X with control wires, as a tuple or a NumPy array, flips the target only when every control is 1."""
+        cases = (
+            ((0,), "000", "000"),
+            (np.array([0]), "000", "000"),
+            (np.array([0]), "100", "110"),
+            (np.array([2, 0]), "100", "100"),
+            (np.array([2, 0]), "101", "111"),
+        )
+        for controls, input_bits, output_bits in cases:
+            with self.subTest(controls=controls, input=input_bits):
+                state = QuantumState(3)
+                state.initialize(input_bits)
+                state.apply_gate("X", 1, controls=controls)
+
+                expected = np.zeros(8)
+                expected[int(output_bits, 2)] = 1
+                assert_array_equal(state.amplitudes, expected)
+
     def test_wire_order(self):
         """Reversed and nonadjacent wires."""
         cases = (

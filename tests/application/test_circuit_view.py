@@ -106,6 +106,24 @@ class TestGateSymbols(unittest.TestCase):
         self.assertEqual(labels, ["U2"])
         self.assertEqual(wire_marks, {0: "1", 1: "2"})
 
+    def test_long_gate_name_wraps_beside_wire_numbers(self):
+        """A wide gate name stays fully visible inside its box without covering the wire numbers."""
+        name = "WWWWWWWW"
+        view = self.draw_gate(PlacedGate(0, name, (1, 0)), GateLibrary([MatrixGate(name, np.eye(4))]))
+        box = next(item.sceneBoundingRect() for item in view.scene().items() if item.toolTip() == name)
+        labels = [
+            item for item in view.scene().items()
+            if isinstance(item, QGraphicsSimpleTextItem) and box.contains(item.sceneBoundingRect().center())
+        ]
+        lines = sorted((item for item in labels if "W" in item.text()), key=lambda item: item.y())
+        numbers = [item for item in labels if item.text().isdigit()]
+        self.assertEqual({item.text() for item in numbers}, {"0", "1"})
+        self.assertEqual([item.text() for item in lines], ["WWWW", "WWWW"])
+        for line in lines:
+            bounds = line.sceneBoundingRect()
+            self.assertTrue(box.contains(bounds))
+            self.assertGreater(bounds.left(), max(item.sceneBoundingRect().right() for item in numbers))
+
 
 class TestCellHighlight(unittest.TestCase):
     """Check which cell the canvas outlines when it redraws under a still pointer."""

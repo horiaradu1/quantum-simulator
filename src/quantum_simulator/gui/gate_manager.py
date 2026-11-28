@@ -1,4 +1,6 @@
-"""Show every gate, what it does and how it is drawn, and delete custom gates that nothing uses."""
+"""Show every gate, what it does and how it is drawn. Save any custom gate, and delete those that nothing uses."""
+
+from collections.abc import Callable
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
@@ -27,7 +29,6 @@ _GATE_ID_ROLE = Qt.ItemDataRole.UserRole
 _LIST_WIDTH = 170
 _NOTE_COLOR = "#60576f"
 _PREVIEW_MARGIN = 8
-# A gate's matrix has 4^wires entries. Above 5 wires (32×32) it is unreadable and slow to build.
 _MAX_SHOWN_MATRIX_WIRES = 5
 
 
@@ -49,7 +50,10 @@ class GateManagerDialog(QDialog):
 
     gate_deleted = Signal(str)
 
-    def __init__(self, session: EditorSession, parent: QWidget | None = None):
+    def __init__(
+        self, session: EditorSession, parent: QWidget | None = None,
+        save_gate: Callable[[str], object] | None = None,
+    ):
         super().__init__(parent)
         self.setWindowTitle("Manage gates")
         self.setMinimumSize(860, 600)
@@ -77,6 +81,10 @@ class GateManagerDialog(QDialog):
         self.usage = QLabel()
         self.delete_button = QPushButton("Delete gate")
         self.delete_button.clicked.connect(self._delete_selected)
+        self.save_button = QPushButton("Save gate as…")
+        self.save_button.setVisible(save_gate is not None)
+        if save_gate is not None:
+            self.save_button.clicked.connect(lambda: save_gate(self._selected_gate()))
         self.delete_reason = QLabel()
         self.delete_reason.setStyleSheet(f"color: {_NOTE_COLOR};")
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
@@ -88,7 +96,6 @@ class GateManagerDialog(QDialog):
         details.addWidget(self.wires)
         details.addSpacing(6)
 
-        # The symbol and the matrix sit side by side, so the matrix gets the full height.
         symbol = QVBoxLayout()
         symbol.addWidget(_heading("Symbol"))
         symbol.addWidget(self.preview)
@@ -106,6 +113,7 @@ class GateManagerDialog(QDialog):
 
         details.addWidget(self.usage)
         delete_row = QHBoxLayout()
+        delete_row.addWidget(self.save_button)
         delete_row.addWidget(self.delete_button)
         delete_row.addWidget(self.delete_reason, 1)
         details.addLayout(delete_row)
@@ -144,7 +152,6 @@ class GateManagerDialog(QDialog):
         self.select_gate(builtin_ids[0])
 
     def _add_heading(self, text: str, bold: bool = True) -> None:
-        # Headings cannot be selected, so only gates can be chosen.
         item = QListWidgetItem(text)
         item.setFlags(Qt.ItemFlag.NoItemFlags)
         font = QFont(self.gate_list.font())
@@ -173,8 +180,6 @@ class GateManagerDialog(QDialog):
         self.preview.render_circuit(
             n_qubits=wire_count, gates=[PlacedGate(0, gate_id, tuple(range(wire_count)))],
         )
-        # Show the wire labels and the gate's column, which ends halfway between the centres
-        # of the first two columns. The next row's centre leaves room below the last wire.
         column_end = (self.preview.cell_center(0, 0).x() + self.preview.cell_center(1, 0).x()) / 2
         bottom = self.preview.cell_center(0, wire_count).y()
         self.preview.setFixedSize(round(column_end) + _PREVIEW_MARGIN, round(bottom))
@@ -213,6 +218,7 @@ class GateManagerDialog(QDialog):
             usage.append(f"Used by {', '.join(dependents)}.")
         self.usage.setText(" ".join(usage))
 
+        self.save_button.setEnabled(not self._session.library.is_builtin(gate_id))
         blocker = self._session.deletion_blocker(gate_id)
         self.delete_button.setEnabled(blocker is None)
         self.delete_reason.setText(blocker or "")

@@ -1,11 +1,11 @@
 """Describe a circuit as placed gates and convert it to and from the versioned circuit format."""
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 
-from .gate_library import GateDefinition, GateLibrary, definition_from_dict
+from .gate_library import MAX_QUBITS, GateDefinition, GateLibrary, definition_from_dict
 
 FORMAT_VERSION = 1
-MAX_QUBITS = 20
 
 
 def validate_cell(step: int, wire: int, qubits: int) -> None:
@@ -32,6 +32,11 @@ class PlacedGate:
     def overlaps(self, other: "PlacedGate") -> bool:
         other_wires = other.wire_span
         return self.step == other.step and any(wire in other_wires for wire in self.wire_span)
+
+
+def execution_order(gates: Iterable[PlacedGate]) -> list[PlacedGate]:
+    """Order gates by column. Gates in the same column keep their placement order."""
+    return sorted(gates, key=lambda gate: gate.step)
 
 
 @dataclass(frozen=True)
@@ -66,7 +71,7 @@ class Circuit:
 
     def execution_order(self) -> list[PlacedGate]:
         """Order gates by column. Gates in the same column keep their placement order."""
-        return sorted(self.gates, key=lambda gate: gate.step)
+        return execution_order(self.gates)
 
     def to_dict(self) -> dict:
         """Write the circuit document. Empty columns stay as empty lists."""

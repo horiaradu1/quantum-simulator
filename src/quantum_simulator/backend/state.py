@@ -81,35 +81,40 @@ class QuantumState:
         amplitudes[int(bits, 2)] = 1
         self._amplitudes = amplitudes
 
-    def apply_gate(self, gate: str | ArrayLike, *qubits: int) -> None:
+    def apply_gate(self, gate: str | ArrayLike, *qubits: int, controls: Iterable[int] = ()) -> None:
         """Apply a named gate or unitary matrix in the given wire order.
 
         Controlled gates such as CNOT and CY take the control first, CNOT10
         takes it second, and Toffoli takes both controls before the target.
         A matrix within 1e-4 of unitary is replaced by the nearest unitary.
+        With control wires, the gate acts only where every control is 1, so a
+        controlled gate never needs its full matrix.
         """
         gate_wires = self._validate_wires(qubits)
+        control_wires = tuple(controls)
+        if control_wires:
+            control_wires = self._validate_wires(control_wires)
+        if set(control_wires) & set(gate_wires):
+            raise ValueError("Control wires must differ from the gate's wires.")
         matrix = gate_matrix(gate, len(gate_wires))
 
-        # One axis per wire lets us index an amplitude by its individual bits.
-        # Move the gate's wires to the front in the matrix's bit order.
         amplitudes_by_wire = self._amplitudes.reshape((2,) * self.n_qubits)
-        leading_axes = tuple(range(len(gate_wires)))
-        gate_wires_first = np.moveaxis(amplitudes_by_wire, gate_wires, leading_axes)
+        selection = tuple(1 if wire in control_wires else slice(None) for wire in range(self.n_qubits))
+        affected = amplitudes_by_wire[selection]
+        target_axes = tuple(wire - sum(control < wire for control in control_wires) for wire in gate_wires)
 
-        # Each column fixes the other wires. On q1 of a two-qubit register,
-        # the pairs are (|00>, |01>) and (|10>, |11>).
+        leading_axes = tuple(range(len(target_axes)))
+        gate_wires_first = np.moveaxis(affected, target_axes, leading_axes)
         amplitude_groups = gate_wires_first.reshape(matrix.shape[1], -1)
         updated_groups = np.dot(matrix, amplitude_groups)
 
         updated_by_wire = updated_groups.reshape(gate_wires_first.shape)
-        register_order = np.moveaxis(updated_by_wire, leading_axes, gate_wires)
-        self._amplitudes = register_order.reshape(-1)
+        amplitudes_by_wire[selection] = np.moveaxis(updated_by_wire, leading_axes, target_axes)
+        self._amplitudes = amplitudes_by_wire.reshape(-1)
 
     def sample(self) -> str:
         """Draw a computational basis label without changing the state."""
         probabilities = self.probabilities
-        # Gate arithmetic can introduce rounding drift. The sampler expects a sum of 1.
         probabilities /= probabilities.sum()
         basis_index = self._rng.choice(probabilities.size, p=probabilities)
         return self._basis_label(basis_index)

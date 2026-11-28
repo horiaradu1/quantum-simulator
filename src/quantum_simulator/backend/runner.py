@@ -45,10 +45,14 @@ def prepare_state(circuit: Circuit, settings: RunSettings | None = None) -> Quan
 
 
 def apply_gates(state: QuantumState, circuit: Circuit) -> Iterator[PlacedGate]:
-    """Apply the circuit's gates in execution order, yielding each gate after it runs."""
+    """Apply the circuit's gates in execution order, yielding each placed gate after it runs.
+
+    A gate from a circuit or a controlled gate runs as its smaller matrices, but still counts as one gate.
+    """
     library = circuit.gate_library()
     for gate in circuit.execution_order():
-        state.apply_gate(library.matrix(gate.name), *gate.wires)
+        for operation in library.matrix_operations(gate.name, gate.wires):
+            state.apply_gate(operation.matrix, *operation.targets, controls=operation.controls)
         yield gate
 
 

@@ -1,16 +1,15 @@
 """Save and open circuit files, and list the shared circuits that ship with the simulator."""
 
-import json
 import re
-import tempfile
 from importlib.resources import files
 from importlib.resources.abc import Traversable
 from pathlib import Path
 
 from .circuit import Circuit
+from .json_file import DATA_DIRECTORY, read_json, write_json
 from .runner import RunSettings
 
-SAVED_CIRCUITS = Path("data") / "circuits"
+SAVED_CIRCUITS = DATA_DIRECTORY / "circuits"
 _SHARED_CIRCUITS = files("quantum_simulator") / "resources" / "circuits"
 _NAME_PATTERN = re.compile(r"[\w\- ]+")
 
@@ -24,38 +23,16 @@ def saved_circuit_path(name: str, directory: Path = SAVED_CIRCUITS) -> Path:
 
 
 def save_circuit(path: Path, circuit: Circuit, settings: RunSettings | None = None) -> None:
-    """Write a circuit file, with any run settings stored apart from the columns."""
+    """Write a circuit file with every custom gate it uses, and any run settings apart from the columns."""
     document = circuit.to_dict()
     if settings is not None:
         document["settings"] = settings.to_dict()
-
-    text = json.dumps(document, indent=2) + "\n"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    # Temp file to prevent corruption of saved files
-    temporary_file = tempfile.NamedTemporaryFile(
-        "w", encoding="utf-8", dir=path.parent, prefix=f"{path.name}.", suffix=".tmp", delete=False
-    )
-    temporary_path = Path(temporary_file.name)
-    try:
-        with temporary_file:
-            temporary_file.write(text)
-        temporary_path.replace(path)
-    except OSError:
-        temporary_path.unlink(missing_ok=True)
-        raise
+    write_json(path, document)
 
 
 def load_circuit(path: Traversable) -> tuple[Circuit, RunSettings | None]:
     """Read a circuit file and its optional settings. Raise ValueError if it cannot be used."""
-    try:
-        text = path.read_text(encoding="utf-8")
-    except OSError as error:
-        raise ValueError(f"Could not read {path.name}: {error.strerror or error}.") from error
-    try:
-        document = json.loads(text)
-    except json.JSONDecodeError as error:
-        raise ValueError(f"{path.name} is not valid JSON: {error.msg} on line {error.lineno}.") from error
-
+    document = read_json(path)
     circuit = Circuit.from_dict(document)
     settings_document = document.get("settings")
     settings = None if settings_document is None else RunSettings.from_dict(settings_document)

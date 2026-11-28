@@ -1,11 +1,11 @@
-"""Dialogs that define a gate from a matrix or by adding a control to an existing gate.
+"""Dialogs that define a gate from a matrix, by adding a control to an existing gate, or from the circuit.
 
 Each dialog keeps a fixed checklist below its inputs. Every check shows its result while the
-user types, and OK is enabled only when all of them pass.
+user types, and Create and Create and save… are enabled only when all of them pass.
 """
 
 import cmath
-from collections.abc import Sequence
+from collections.abc import Callable, Iterable, Sequence
 from html import escape
 
 import numpy as np
@@ -25,9 +25,18 @@ from PySide6.QtWidgets import (
 )
 
 from ..backend.expressions import format_complex, parse_complex
-from ..backend.gate_library import MAX_MATRIX_WIRES, ControlledGate, GateDefinition, GateLibrary, MatrixGate
+from ..backend.gate_library import (
+    MAX_MATRIX_WIRES,
+    CircuitGate,
+    ControlledGate,
+    GateDefinition,
+    GateLibrary,
+    MatrixGate,
+)
 from ..backend.gates import unitary_matrix
 from .arrow_spin_box import ArrowSpinBox
+
+type SaveGate = Callable[[GateDefinition], Iterable[GateDefinition] | None]
 
 _MAX_NAME_LENGTH = 8
 _WIRE_COUNT_WIDTH = 64
@@ -126,14 +135,23 @@ class Checklist(QWidget):
 
 
 class _DefinitionDialog(QDialog):
-    """Shared parts: a name, a checklist and OK/Cancel, with OK enabled only for a valid definition."""
+    """Shared parts: a name, a checklist, and Create, Create and save… and Cancel.
 
-    def __init__(self, title: str, library: GateLibrary, check_titles: Sequence[str], parent: QWidget | None):
+    Both create buttons are enabled only for a valid definition. Create and save… calls save_gate,
+    which asks where to save and writes the file. It returns the definitions it wrote, or None if
+    the user cancels or the write fails, and then the dialog stays open with the user's input.
+    """
+
+    def __init__(
+        self, title: str, library: GateLibrary, check_titles: Sequence[str], parent: QWidget | None,
+        save_gate: SaveGate | None,
+    ):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.setMinimumWidth(_MIN_DIALOG_WIDTH)
         self._library = library
         self._definition: GateDefinition | None = None
+        self._save_gate = save_gate
 
         self.name_edit = QLineEdit()
         self.name_edit.setMaxLength(_MAX_NAME_LENGTH)
@@ -143,12 +161,21 @@ class _DefinitionDialog(QDialog):
         self.buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
+        self.buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Create")
+        self.save_button = self.buttons.addButton("Create and save…", QDialogButtonBox.ButtonRole.ActionRole)
+        self.save_button.setVisible(save_gate is not None)
+        self.save_button.clicked.connect(self._create_and_save)
         self.buttons.accepted.connect(self.accept)
         self.buttons.rejected.connect(self.reject)
 
     def definition(self) -> GateDefinition:
         """The checked definition. Only valid after the dialog was accepted."""
         return self._definition
+
+    def _create_and_save(self) -> None:
+        written = self._save_gate(self._definition)
+        if written:
+            self.accept()
 
     def _check_name(self) -> bool:
         name = self.name_edit.text()
@@ -166,13 +193,16 @@ class _DefinitionDialog(QDialog):
     def _set_definition(self, definition: GateDefinition | None) -> None:
         self._definition = definition
         self.buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(definition is not None)
+        self.save_button.setEnabled(definition is not None)
 
 
 class MatrixGateDialog(_DefinitionDialog):
     """Let the user name a unitary matrix and see every problem with it while they type."""
 
-    def __init__(self, library: GateLibrary, parent: QWidget | None = None):
-        super().__init__("New matrix gate", library, ("Name", "Entries", "Unitary"), parent)
+    def __init__(
+        self, library: GateLibrary, parent: QWidget | None = None, save_gate: SaveGate | None = None
+    ):
+        super().__init__("New matrix gate", library, ("Name", "Entries", "Unitary"), parent, save_gate)
         self.cells: list[list[QLineEdit]] = []
         self.cell_values: list[list[QLabel]] = []
 
@@ -201,7 +231,6 @@ class MatrixGateDialog(_DefinitionDialog):
         layout.addLayout(self._grid)
         layout.addSpacing(8)
         layout.addWidget(self.checks)
-        # The dialog keeps its size when the reference is hidden. The free space goes here.
         layout.addStretch()
         layout.addWidget(self.buttons)
 
@@ -218,7 +247,6 @@ class MatrixGateDialog(_DefinitionDialog):
     def _build_cells(self, wire_count: int) -> None:
         while self._grid.count():
             old_widget = self._grid.takeAt(0).widget()
-            # Hide it now. Qt deletes it once control returns to the event loop.
             old_widget.hide()
             old_widget.deleteLater()
 
@@ -256,7 +284,6 @@ class MatrixGateDialog(_DefinitionDialog):
         font = label.font()
         font.setPointSize(font.pointSize() - 1)
         label.setFont(font)
-        # The line is always reserved and never widens its column, so typing moves nothing.
         label.setFixedHeight(label.fontMetrics().lineSpacing())
         label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         return label
@@ -291,7 +318,6 @@ class MatrixGateDialog(_DefinitionDialog):
                 else:
                     cell.setStyleSheet("")
                     cell.setToolTip("")
-                    # A plain number such as 0.6 is already its value, so only expressions get one.
                     shown_value = format_complex(value)
                     value_label.setText("" if shown_value == cell.text().strip() else f"= {shown_value}")
                 values.append(value)
@@ -331,8 +357,10 @@ class MatrixGateDialog(_DefinitionDialog):
 class ControlledGateDialog(_DefinitionDialog):
     """Let the user add one control wire before the wires of an existing gate."""
 
-    def __init__(self, library: GateLibrary, parent: QWidget | None = None):
-        super().__init__("New controlled gate", library, ("Name", "Wires"), parent)
+    def __init__(
+        self, library: GateLibrary, parent: QWidget | None = None, save_gate: SaveGate | None = None
+    ):
+        super().__init__("New controlled gate", library, ("Name", "Wires"), parent, save_gate)
         self.base_choice = QComboBox()
         self.base_choice.addItems(library.gate_ids())
         self.form.insertRow(0, "&Control", self.base_choice)
@@ -363,4 +391,33 @@ class ControlledGateDialog(_DefinitionDialog):
         definition = None
         if self._check_name():
             definition = ControlledGate(self.name_edit.text(), base, base_wires + 1)
+        self._set_definition(definition)
+
+
+class CircuitGateDialog(_DefinitionDialog):
+    """Name a gate made from the open circuit, then create it, or create it and save it to a file."""
+
+    def __init__(
+        self, library: GateLibrary, make_gate: Callable[[str], CircuitGate], wire_count: int,
+        parent: QWidget | None = None, save_gate: SaveGate | None = None,
+    ):
+        super().__init__("Define gate from circuit", library, ("Name",), parent, save_gate)
+        self._make_gate = make_gate
+        wires = "1 wire" if wire_count == 1 else f"{wire_count} wires"
+        summary = QLabel(f"A gate on {wires} that applies the circuit's gates in order.")
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(summary)
+        layout.addLayout(self.form)
+        layout.addSpacing(8)
+        layout.addWidget(self.checks)
+        layout.addWidget(self.buttons)
+
+        self.name_edit.textChanged.connect(self._check)
+        self._check()
+
+    def _check(self) -> None:
+        definition = None
+        if self._check_name():
+            definition = self._make_gate(self.name_edit.text())
         self._set_definition(definition)

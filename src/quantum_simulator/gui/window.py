@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QInputDialog,
     QLabel,
+    QLineEdit,
     QMainWindow,
     QMessageBox,
     QProgressBar,
@@ -35,14 +36,16 @@ from PySide6.QtWidgets import (
 
 from ..backend import Outcome, QuantumState
 from ..backend.circuit import MAX_QUBITS
-from ..backend.circuit_file import SAVED_CIRCUITS, load_circuit, save_circuit, saved_circuit_path, shared_circuits
+from ..backend.circuit_file import load_circuit, save_circuit, saved_circuit_path, shared_circuits
 from ..backend.editor import EditorSession, Placement
-from ..backend.gate_library import GateDefinition
+from ..backend.gate_file import export_gates, load_gates, save_gates
+from ..backend.gate_library import ClashChoice, GateDefinition, GateLibrary, NameClash, outermost_gates
+from ..backend.json_file import DATA_DIRECTORY
 from .arrow_spin_box import ArrowSpinBox
 from .basis_state_spin_box import BasisStateSpinBox
 from .circuit_view import CircuitView
 from .flow_layout import FlowLayout
-from .gate_dialogs import ControlledGateDialog, MatrixGateDialog
+from .gate_dialogs import CircuitGateDialog, ControlledGateDialog, MatrixGateDialog
 from .gate_manager import GateManagerDialog
 from .gate_button import GateButton
 from .styles import WINDOW_STYLE
@@ -70,10 +73,15 @@ def _section_title(text: str) -> QLabel:
     return label
 
 
+def _existing_folder(folder: Path) -> str:
+    """Where a file dialog starts: the folder if it exists."""
+    return str(folder) if folder.is_dir() else ""
+
+
 class SimulatorWindow(QMainWindow):
     """Forward edits to the editor session, run the circuit, and display or measure its final state."""
 
-    def __init__(self):
+    def __init__(self, data_directory: Path = DATA_DIRECTORY):
         super().__init__()
         self.setWindowTitle("Quantum Simulator")
         self.setMinimumSize(_MINIMUM_SIZE)
@@ -81,7 +89,11 @@ class SimulatorWindow(QMainWindow):
         self.setStyleSheet(WINDOW_STYLE)
 
         self.session = EditorSession(qubits=2)
-        self.saved_circuits = SAVED_CIRCUITS
+        self.saved_circuits = data_directory / "circuits"
+        self.saved_gates = data_directory / "gates"
+        self._circuit_name = "Untitled"
+        self._open_gate_path: Path | None = None
+        self._open_gate_file_gates: tuple[GateDefinition, ...] = ()
         self._run_steps: Iterator[None] | None = None
         self._run_timer = QTimer(self)
         self._run_timer.timeout.connect(self._advance_run)
@@ -133,8 +145,6 @@ class SimulatorWindow(QMainWindow):
     def _fit_to_screen(self) -> None:
         """Open centred and scaled to the screen, but never below the minimum size."""
         available = self.screen().availableGeometry()
-        # The screen's tighter dimension sets the scale, so an ultrawide screen does not
-        # stretch the window sideways.
         width_scale = available.width() / _DESIGN_SIZE.width()
         height_scale = available.height() / _DESIGN_SIZE.height()
         scale = _SCREEN_FRACTION * min(width_scale, height_scale)
@@ -148,18 +158,25 @@ class SimulatorWindow(QMainWindow):
 
     def _build_menu(self) -> None:
         file_menu = self.menuBar().addMenu("&File")
-        self.open_action = file_menu.addAction("&Open…")
+        self.new_circuit_action = file_menu.addAction("&New circuit")
+        self.new_circuit_action.setShortcut(QKeySequence.StandardKey.New)
+        self.new_circuit_action.triggered.connect(self._new_circuit)
+        self.open_action = file_menu.addAction("&Open circuit…")
         self.open_action.setShortcut(QKeySequence.StandardKey.Open)
         self.open_action.triggered.connect(self._choose_circuit_file)
+        self.open_gate_action = file_menu.addAction("Open &gate…")
+        self.open_gate_action.triggered.connect(self._choose_gate_file)
         self.save_action = file_menu.addAction("&Save…")
         self.save_action.setShortcut(QKeySequence.StandardKey.Save)
-        self.save_action.triggered.connect(self._save_circuit)
+        self.save_action.triggered.connect(self._save)
 
         gates_menu = self.menuBar().addMenu("&Gates")
         self.new_matrix_gate_action = gates_menu.addAction("New &matrix gate…")
         self.new_matrix_gate_action.triggered.connect(self._define_matrix_gate)
         self.new_controlled_gate_action = gates_menu.addAction("New &controlled gate…")
         self.new_controlled_gate_action.triggered.connect(self._define_controlled_gate)
+        self.define_circuit_gate_action = gates_menu.addAction("&Define gate from circuit…")
+        self.define_circuit_gate_action.triggered.connect(self._define_circuit_gate)
         gates_menu.addSeparator()
         self.manage_gates_action = gates_menu.addAction("Manage &gates…")
         self.manage_gates_action.triggered.connect(self._manage_gates)
@@ -181,11 +198,11 @@ class SimulatorWindow(QMainWindow):
 
         self.qubit_count = ArrowSpinBox()
         self.qubit_count.setObjectName("qubitCount")
-        # Accept any typed count, so a count above MAX_QUBITS shows an error instead of being ignored.
+
         self.qubit_count.setRange(1, 2**31 - 1)
         self.qubit_count.setValue(2)
         self.qubit_count.setMinimumSize(64, 30)
-        # Typing 12 should not pass through 1 on the way, which would ask to remove gates.
+
         self.qubit_count.setKeyboardTracking(False)
         qubits_label = QLabel("&Qubits")
         qubits_label.setBuddy(self.qubit_count)
@@ -221,7 +238,6 @@ class SimulatorWindow(QMainWindow):
         palette.addWidget(title, 0, Qt.AlignmentFlag.AlignTop)
         palette.addSpacing(6)
 
-        # Buttons wrap onto more rows so every gate stays reachable at the minimum width.
         self._gate_button_layout = FlowLayout()
         self._gate_button_layout.setSpacing(6)
         self._gate_button_group = QButtonGroup(self)
@@ -245,8 +261,14 @@ class SimulatorWindow(QMainWindow):
     def _build_circuit(self) -> QFrame:
         frame, layout = _panel()
         heading = QHBoxLayout()
-        heading.addWidget(_section_title("Circuit"))
+        self.circuit_title = _section_title("")
+        self.circuit_title.setTextFormat(Qt.TextFormat.PlainText)
+        self._show_title()
+        heading.addWidget(self.circuit_title)
         heading.addStretch()
+        self.save_button = QPushButton("Save")
+        self.save_button.clicked.connect(self.save_action.trigger)
+        heading.addWidget(self.save_button)
         self.clear_button = QPushButton("Clear")
         self.clear_button.clicked.connect(self._clear_circuit)
         heading.addWidget(self.clear_button)
@@ -342,8 +364,14 @@ class SimulatorWindow(QMainWindow):
 
     def _update_gate_buttons(self) -> None:
         for gate_id, button in self.gate_buttons.items():
-            button.setEnabled(self.session.fits(gate_id))
+            button.setEnabled(self.session.can_place(gate_id))
         self.gate_buttons[self.session.selected_gate].setChecked(True)
+
+    def _save(self) -> bool:
+        """Save the open gate or circuit. Return whether it was saved."""
+        if self.session.open_gate is not None:
+            return self._save_open_gate()
+        return self._save_circuit()
 
     def _save_circuit(self) -> bool:
         """Ask for a name and save the circuit. Return whether it was saved."""
@@ -370,63 +398,247 @@ class SimulatorWindow(QMainWindow):
             QMessageBox.warning(self, "Save circuit", f"Could not save {path.name}: {error.strerror or error}.")
             return False
         self.session.modified = False
+        self.session.record_file(path, circuit.definitions)
+        self._show_circuit_name(path.stem)
         return True
 
     def _confirm_discard(self, action: str) -> bool:
         """Offer to save unsaved changes before an action replaces them. Return whether to go ahead."""
         if not self.session.modified:
             return True
+        document = "circuit" if self.session.open_gate is None else "gate"
         answer = QMessageBox.question(
-            self, "Unsaved changes", f"The circuit has unsaved changes. Save them before {action}?",
+            self, "Unsaved changes", f"The {document} has unsaved changes. Save them before {action}?",
             QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard
             | QMessageBox.StandardButton.Cancel,
             QMessageBox.StandardButton.Save,
         )
         if answer == QMessageBox.StandardButton.Save:
-            return self._save_circuit()
+            return self._save()
         return answer == QMessageBox.StandardButton.Discard
 
     def _choose_circuit_file(self) -> None:
-        self.saved_circuits.mkdir(parents=True, exist_ok=True)
         path, _ = QFileDialog.getOpenFileName(
-            self, "Open circuit", str(self.saved_circuits), "Circuit files (*.json)"
+            self, "Open circuit", _existing_folder(self.saved_circuits), "Circuit files (*.json)"
         )
         if path:
             self._open_circuit(Path(path))
 
     def _open_circuit(self, path: Traversable) -> None:
-        if not self._confirm_discard("opening another circuit"):
+        if not self._confirm_discard("opening a circuit"):
             return
-        # Loading the session first means a rejected file or gate name changes nothing.
+        # Loading the session first means a rejected file or a cancelled rename changes nothing.
         try:
             circuit, settings = load_circuit(path)
-            self.session.load(circuit, settings)
+            opened = self.session.load(circuit, settings, self._resolve_name_clash)
         except ValueError as error:
             QMessageBox.warning(self, "Open circuit", str(error))
             return
+        if not opened:
+            return
+        if isinstance(path, Path):
+            self.session.record_file(path, circuit.definitions)
+        self._circuit_name = Path(path.name).stem
+        self._show_editor_contents(int(circuit.initial_bits, 2))
 
+    def _show_editor_contents(self, initial_value: int) -> None:
+        """Show what the session now edits, a circuit or a gate: its register, heading, gates and buttons."""
         with QSignalBlocker(self.qubit_count):
-            self.qubit_count.setValue(circuit.qubits)
+            self.qubit_count.setValue(self.session.qubits)
         with QSignalBlocker(self.initial_state), QSignalBlocker(self.initial_state.lineEdit()):
-            self.initial_state.set_qubit_count(circuit.qubits)
-            self.initial_state.setValue(int(circuit.initial_bits, 2))
+            self.initial_state.set_qubit_count(self.session.qubits)
+            self.initial_state.setValue(initial_value)
+        # An open gate keeps its wire count, so every use of it still fits.
+        self.qubit_count.setEnabled(self.session.open_gate is None)
+        self._show_title()
         self._add_missing_gate_buttons()
         self._update_gate_buttons()
         self._refresh_circuit()
         self._invalidate_results()
 
+    def _show_title(self) -> None:
+        """Name what is open in the heading, such as Circuit: test or Gate: Inner."""
+        if self.session.open_gate is None:
+            self.circuit_title.setText(f"Circuit: {self._circuit_name}")
+        else:
+            self.circuit_title.setText(f"Gate: {self.session.open_gate}")
+
+    def _resolve_name_clash(self, clash: NameClash) -> str | ClashChoice | None:
+        """Ask whether to use the local gate, rename the incoming one, or cancel the whole open."""
+        incoming = clash.incoming.gate_id
+        question = f"Use your {incoming}, or rename the incoming one?" if clash.can_use_local else "Rename it?"
+        box = QMessageBox(
+            QMessageBox.Icon.Question, "Gate name in use", f"{clash.problem} {question}",
+            QMessageBox.StandardButton.Cancel, self,
+        )
+        use_local = box.addButton("Use mine", QMessageBox.ButtonRole.AcceptRole) if clash.can_use_local else None
+        rename = box.addButton("Rename…", QMessageBox.ButtonRole.ActionRole)
+        box.exec()
+        if use_local is not None and box.clickedButton() == use_local:
+            return ClashChoice.USE_LOCAL
+        if box.clickedButton() != rename:
+            return None
+        name, accepted = QInputDialog.getText(
+            self, "Rename incoming gate", f"New name for the incoming {incoming}:",
+            QLineEdit.EchoMode.Normal, clash.suggestion,
+        )
+        return name.strip() if accepted else None
+
+    def _new_circuit(self) -> None:
+        if not self._confirm_discard("starting a new circuit"):
+            return
+        self.session.new_circuit()
+        self._circuit_name = "Untitled"
+        self._show_editor_contents(0)
+
+    def _choose_gate_file(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Open gate", _existing_folder(self.saved_gates), "Gate files (*.json)"
+        )
+        if path:
+            self._open_gate_file(Path(path))
+
+    def _open_gate_file(self, path: Path) -> None:
+        """Add a gate file's gates to the palette, and open its gate from a circuit for editing if it has one.
+
+        Nothing changes until every name clash is settled and, when a gate will replace the open
+        document, the user agrees to leave it.
+        """
+        try:
+            definitions = load_gates(path)
+            gate_import = self.session.library.plan_import(definitions, self._resolve_name_clash)
+        except ValueError as error:
+            QMessageBox.warning(self, "Open gate", str(error))
+            return
+        if gate_import is None:
+            return
+
+        # The gate the user ended up with decides: Use mine can swap in a matrix or controlled gate.
+        editable = self.session.gates_to_edit(definitions, gate_import)
+        gate_id = editable[0] if editable else None
+        if len(editable) > 1:
+            gate_id, accepted = QInputDialog.getItem(self, "Open gate", "Gate to edit:", editable, 0, False)
+            if not accepted:
+                return
+        if gate_id is not None and not self._confirm_discard("opening a gate"):
+            return
+
+        self.session.apply_import(gate_import)
+        self.session.record_file(path, definitions)
+        self._add_missing_gate_buttons()
+        self._update_gate_buttons()
+        if gate_id is None:
+            QMessageBox.information(
+                self, "Open gate", "The file has no gate from a circuit to edit. Its gates are now in the palette."
+            )
+            return
+        self.session.edit_gate(gate_id)
+        # Saving writes back to this file, keeping every other gate in it.
+        self._open_gate_path = path
+        self._open_gate_file_gates = definitions
+        self._original_gate_name = next(
+            gate.gate_id for gate in outermost_gates(definitions) if gate_import.new_name(gate.gate_id) == gate_id
+        )
+        self._show_editor_contents(0)
+
+    def _save_open_gate(self) -> bool:
+        """Write the edited gate back to the file it came from, then apply the edits everywhere it is used.
+
+        If the write fails, the edits stay pending so the user can save again.
+        """
+        gate_id = self.session.open_gate
+
+        def write(library: GateLibrary) -> tuple[GateDefinition, ...]:
+            previous = {gate.gate_id: gate for gate in self._open_gate_file_gates}
+            others = [gate.gate_id for gate in outermost_gates(self._open_gate_file_gates)
+                      if gate.gate_id != self._original_gate_name]
+            protected = GateLibrary(previous.values()).definitions_for(others)
+            protected_names = {gate.gate_id for gate in protected}
+            previous.pop(self._original_gate_name)
+            for gate in library.definitions_for([gate_id]):
+                if gate.gate_id in protected_names and gate != previous[gate.gate_id]:
+                    raise ValueError(f"Saving would change {gate.gate_id} used by another gate in this file.")
+                previous[gate.gate_id] = gate
+            definitions = GateLibrary(previous.values()).user_definitions
+            save_gates(self._open_gate_path, definitions)
+            self.session.record_file(self._open_gate_path, definitions)
+            self._open_gate_file_gates = definitions
+            self._original_gate_name = gate_id
+            return definitions
+
+        try:
+            self.session.save_gate(write)
+        except ValueError as error:
+            QMessageBox.warning(self, "Save gate", str(error))
+            return False
+        except OSError as error:
+            self._warn_gate_not_saved(gate_id, error)
+            return False
+        return True
+
+    def _save_gate_file(self, library: GateLibrary, gate_id: str) -> tuple[GateDefinition, ...] | None:
+        """Ask where to save a gate, then write it with every custom gate it uses.
+
+        Return the definitions written, or None if the user cancels or the write fails.
+        The file dialog asks before replacing an existing file.
+        """
+        try:
+            self.saved_gates.mkdir(parents=True, exist_ok=True)
+        except OSError as error:
+            self._warn_gate_not_saved(gate_id, error)
+            return None
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save gate", str(self.saved_gates / f"{gate_id}.json"), "Gate files (*.json)"
+        )
+        if not path:
+            return None
+        try:
+            destination = Path(path)
+            written = export_gates(destination, library, [gate_id])
+            self.session.record_file(destination, written)
+            return written
+        except OSError as error:
+            self._warn_gate_not_saved(gate_id, error)
+            return None
+
+    def _save_new_gate(self, definition: GateDefinition) -> tuple[GateDefinition, ...] | None:
+        """Save a gate that a creation dialog is about to add, from a copy of the library that holds it."""
+        library = self.session.library.copy()
+        library.add(definition)
+        return self._save_gate_file(library, definition.gate_id)
+
+    def _save_gate_as(self, gate_id: str) -> None:
+        """Save any custom gate to a file the user picks. It counts as saved only once the file is written."""
+        self._save_gate_file(self.session.library, gate_id)
+
+    def _warn_gate_not_saved(self, gate_id: str, error: OSError) -> None:
+        QMessageBox.warning(self, "Save gate", f"Could not save {gate_id}: {error.strerror or error}.")
+
     def _define_matrix_gate(self) -> None:
-        dialog = MatrixGateDialog(self.session.library, self)
-        if dialog.exec():
-            self._add_definition(dialog.definition())
+        self._create_gate(MatrixGateDialog(self.session.library, self, self._save_new_gate))
 
     def _define_controlled_gate(self) -> None:
-        dialog = ControlledGateDialog(self.session.library, self)
-        if dialog.exec():
-            self._add_definition(dialog.definition())
+        self._create_gate(ControlledGateDialog(self.session.library, self, self._save_new_gate))
+
+    def _define_circuit_gate(self) -> None:
+        if not self.session.gates:
+            QMessageBox.warning(
+                self, "Define gate from circuit", "Place the gates for the new gate in the circuit first."
+            )
+            return
+        dialog = CircuitGateDialog(
+            self.session.library, self.session.gate_from_circuit, self.session.qubits, self, self._save_new_gate
+        )
+        self._create_gate(dialog)
+
+    def _create_gate(self, dialog: MatrixGateDialog | ControlledGateDialog | CircuitGateDialog) -> None:
+        """Add the gate a creation dialog defines. Create and save… has already written its file."""
+        if not dialog.exec():
+            return
+        self._add_definition(dialog.definition())
 
     def _manage_gates(self) -> None:
-        dialog = GateManagerDialog(self.session, self)
+        dialog = GateManagerDialog(self.session, self, self._save_gate_as)
         dialog.gate_deleted.connect(self._remove_gate_button)
         dialog.exec()
 
@@ -440,10 +652,10 @@ class SimulatorWindow(QMainWindow):
         self._refresh_circuit()
 
     def _add_definition(self, definition: GateDefinition) -> None:
-        self.session.library.add(definition)
+        self.session.add_gate(definition)
         self._add_missing_gate_buttons()
         self._update_gate_buttons()
-        if self.session.fits(definition.gate_id):
+        if self.session.can_place(definition.gate_id):
             self._select_gate(definition.gate_id)
 
     def _select_gate(self, gate_id: str) -> None:
@@ -473,7 +685,6 @@ class SimulatorWindow(QMainWindow):
         if role is None:
             self.circuit_hint.setText("Drag gates onto wires. Right-click a gate to remove it.")
         else:
-            # The canvas highlights the gate's column, so the hint only names the wire to choose.
             self.circuit_hint.setText(f"Choose the {role}.")
 
     def _place_gate(self, step: int, wire: int) -> None:
@@ -493,11 +704,13 @@ class SimulatorWindow(QMainWindow):
             self._invalidate_results()
 
     def _clear_circuit(self) -> None:
-        if not self._confirm_discard("clearing it"):
-            return
         self.session.clear()
         self._refresh_circuit()
         self._invalidate_results()
+
+    def _show_circuit_name(self, name: str) -> None:
+        self._circuit_name = name
+        self._show_title()
 
     def _invalidate_results(self) -> None:
         if self._run_steps is not None:
@@ -551,12 +764,24 @@ class SimulatorWindow(QMainWindow):
         self.pages.setCurrentIndex(0)
 
     def closeEvent(self, event: QCloseEvent) -> None:
-        if not self._confirm_discard("closing"):
+        if not self._confirm_discard("closing") or not self._confirm_losing_gates():
             event.ignore()
             return
         if self._run_steps is not None:
             self._invalidate_results()
         super().closeEvent(event)
+
+    def _confirm_losing_gates(self) -> bool:
+        """Custom gates are not saved automatically, so ask before closing loses one. Return whether to close."""
+        if not self.session.unsaved_gates:
+            return True
+        answer = QMessageBox.question(
+            self, "Unsaved gates",
+            "Some custom gates aren't saved. Close without them?",
+            QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        return answer == QMessageBox.StandardButton.Discard
 
     def _simulate(self, basis: str) -> Iterator[None]:
         yield from self.session.run_steps(basis)
@@ -567,7 +792,6 @@ class SimulatorWindow(QMainWindow):
         outcome_count = 0
         self.results_table.setRowCount(2**state.n_qubits)
         for outcome in state.outcomes():
-            # Treat tiny rounding residues as zero when displaying the state.
             if outcome.magnitude > _DISPLAY_TOLERANCE:
                 self._set_outcome_row(outcome_count, outcome)
                 outcome_count += 1
@@ -600,8 +824,7 @@ class SimulatorWindow(QMainWindow):
 def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("Quantum Simulator")
-    # The stylesheet only defines light colors. A dark system theme would otherwise
-    # give menus and dialogs dark backgrounds behind the stylesheet's dark text.
+    # TODO Check whether the system is in dark mode and use that instead of forcing light mode. Or put a toggle, or choose another scheme
     app.styleHints().setColorScheme(Qt.ColorScheme.Light)
     font = app.font()
     font.setPointSize(10)

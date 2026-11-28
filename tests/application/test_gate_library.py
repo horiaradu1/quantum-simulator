@@ -1,4 +1,4 @@
-"""Define gates from matrices and check how they are validated and applied, without Qt."""
+"""Define custom gates and check how they are validated, imported and applied, without Qt."""
 
 import unittest
 from math import sqrt
@@ -8,7 +8,15 @@ from numpy.testing import assert_allclose
 
 from quantum_simulator import Circuit, PlacedGate, QuantumState, run
 from quantum_simulator.backend.expressions import parse_complex
-from quantum_simulator.backend.gate_library import GateLibrary, MatrixGate
+from quantum_simulator.backend.gate_library import (
+    ClashChoice,
+    CircuitGate,
+    ControlledGate,
+    GateLibrary,
+    GateOperation,
+    MatrixGate,
+    definition_from_dict,
+)
 
 
 def _hadamard(entry):
@@ -85,3 +93,60 @@ class TestMatrixGates(unittest.TestCase):
         expected.apply_gate("H", 3)
         expected.apply_gate(matrix, 3, 0)
         assert_allclose(run(circuit).amplitudes, expected.amplitudes, atol=1e-12)
+
+
+class TestCircuitGatesAndImports(unittest.TestCase):
+    """Check how gates from circuits are validated, and how imported gates are reused or renamed."""
+
+    def test_malformed_circuit_gates_are_rejected(self):
+        """Gates from circuits with unknown gates, measurements, bad wires, no operations or a cycle are rejected."""
+        def circuit_gate(gate_id, *operations, wire_count=2):
+            return CircuitGate(gate_id, wire_count, tuple(GateOperation(gate, wires) for gate, wires in operations))
+
+        library = GateLibrary()
+        rejected = {
+            "unknown gate": lambda: library.check(circuit_gate("Bad", ("FOO", (0,)))),
+            "measurement": lambda: library.check(circuit_gate("Bad", ("MEASURE", (0,)))),
+            "too few wires": lambda: library.check(circuit_gate("Bad", ("CNOT", (0,)))),
+            "wire outside the gate": lambda: circuit_gate("Bad", ("H", (2,))),
+            "repeated wire": lambda: circuit_gate("Bad", ("CNOT", (1, 1))),
+            "no operations": lambda: circuit_gate("Bad"),
+            "uses itself": lambda: GateLibrary([circuit_gate("Loop", ("Loop", (0, 1)))]),
+            "cycle": lambda: GateLibrary([circuit_gate("A", ("B", (0, 1))), circuit_gate("B", ("A", (1, 0)))]),
+            "operation without wires": lambda: definition_from_dict(
+                {"id": "Bad", "kind": "circuit_gate", "wire_count": 1, "operations": [{"gate": "H"}]}
+            ),
+        }
+        for case, define in rejected.items():
+            with self.subTest(case=case), self.assertRaises(ValueError):
+                define()
+
+    def test_import_reuses_identical_gates_and_renames_conflicts(self):
+        """An identical gate is reused. A clash renames the incoming gate, with gates built on it following, or uses the local gate."""
+        flip = MatrixGate("Flip", [[0, 1], [1, 0]])
+        local = GateLibrary([flip, MatrixGate("Rot", [[0.6, -0.8], [0.8, 0.6]]), ControlledGate("CRot", "Rot", 2)])
+        incoming = (
+            flip,
+            MatrixGate("Rot", [[0.8, -0.6], [0.6, 0.8]]),
+            ControlledGate("CRot", "Rot", 2),
+        )
+        prompts = []
+
+        def accept_suggestion(clash):
+            prompts.append((clash.incoming.gate_id, clash.suggestion))
+            return clash.suggestion
+
+        # CRot looks identical, but its base Rot is renamed, so it needs a new name too.
+        gate_import = local.plan_import(incoming, accept_suggestion)
+        self.assertEqual(prompts, [("Rot", "Rot2"), ("CRot", "CRot2")])
+        self.assertEqual(gate_import.renames, {"Rot": "Rot2", "CRot": "CRot2"})
+        self.assertEqual(gate_import.definitions[1], ControlledGate("CRot2", "Rot2", 2))
+
+        # Using the local Rot keeps CRot pointing at it, so CRot is reused and nothing is added.
+        gate_import = local.plan_import(incoming, lambda clash: ClashChoice.USE_LOCAL)
+        self.assertEqual(gate_import.definitions, ())
+        self.assertEqual(gate_import.new_name("Rot"), "Rot")
+
+        # Cancelling leaves nothing to add, and planning never changes the library.
+        self.assertIsNone(local.plan_import(incoming, lambda clash: None))
+        self.assertEqual([definition.gate_id for definition in local.user_definitions], ["Flip", "Rot", "CRot"])

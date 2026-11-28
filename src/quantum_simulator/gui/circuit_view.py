@@ -38,7 +38,6 @@ _BOX_SIZE = 34
 _NAMED_BOX_WIDTH = 62
 _LABEL_PADDING = 12
 _WIRE_NUMBER_MARGIN = 16
-# Boxes widen to fit their label but stop before they reach the next column.
 _MAX_BOX_WIDTH = _STEP_WIDTH - 8
 
 _CANVAS = QColor("#fcfbff")
@@ -87,10 +86,8 @@ class CircuitView(QGraphicsView):
         self.setAccessibleName("Circuit grid")
         if editable:
             self.viewport().setAcceptDrops(True)
-            # Report mouse moves without a pressed button, so the cell under the mouse is highlighted.
             self.viewport().setMouseTracking(True)
         else:
-            # A read-only view, such as a gate preview, ignores the mouse.
             self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
 
     @property
@@ -142,7 +139,6 @@ class CircuitView(QGraphicsView):
         distance = pixels.x() or pixels.y()
         if not distance:
             angle = event.angleDelta()
-            # A standard wheel notch is 120 angle units. Move one column per notch.
             distance = round((angle.x() or angle.y()) * _STEP_WIDTH / 120)
 
         scrollbar = self.horizontalScrollBar()
@@ -153,7 +149,6 @@ class CircuitView(QGraphicsView):
         available_width = self.viewport().width() - _GRID_LEFT - _GRID_PADDING
         visible_steps = available_width // _STEP_WIDTH
         last_step = max((gate.step for gate in self._gates), default=-1)
-        # Keep one empty column after the last gate so the circuit can keep growing.
         steps_after_edit = last_step + 2
         pending_steps = 0 if self._pending_step is None else self._pending_step + 1
         return max(_MIN_STEPS, visible_steps, self._column_count, steps_after_edit, pending_steps)
@@ -203,7 +198,6 @@ class CircuitView(QGraphicsView):
             self._add_label(f"q{wire}", QPointF(_GRID_LEFT / 2, y), 11, _WIRE)
 
     def _cell_at(self, position: QPoint) -> tuple[int, int] | None:
-        # Scene coordinates account for the current scroll position.
         point = self.mapToScene(position)
         step = floor((point.x() - _GRID_LEFT) / _STEP_WIDTH)
         wire = floor((point.y() - _GRID_TOP) / _WIRE_HEIGHT)
@@ -240,7 +234,6 @@ class CircuitView(QGraphicsView):
             event.ignore()
             return
 
-        # Accept entry over the viewport margin so a drag can move onto the grid.
         self._highlight(self._cell_to_highlight(event.position().toPoint()))
         self._accept_copy(event)
 
@@ -306,11 +299,9 @@ class CircuitView(QGraphicsView):
             return None
         if self._is_dragging_gate:
             return self._available_cell_at(position)
-        # Hovering outlines occupied cells too, because right-clicking one removes its gate.
         return self._cell_at(position)
 
     def _highlight_cell_under_cursor(self) -> None:
-        # After a redraw, resize or scroll, a different cell may be under the still pointer.
         viewport = self.viewport()
         position = viewport.mapFromGlobal(QCursor.pos())
         is_over_canvas = viewport.rect().contains(position)
@@ -366,10 +357,8 @@ class CircuitView(QGraphicsView):
         x = self.cell_center(gate.step, 0).x()
         pen = QPen(_ACCENT, 1.75)
         if control_count:
-            # The line joins the control dots to the box, which is drawn over it.
             self.scene().addLine(x, min(rows), x, max(rows), pen)
 
-        # The wire numbers sit in a margin on the left, and the name is centred in the rest.
         width = self._box_width(label, minimum=_NAMED_BOX_WIDTH, extra=_WIRE_NUMBER_MARGIN)
         left = x - width / 2
         top = min(box_rows) - _BOX_SIZE / 2
@@ -380,15 +369,13 @@ class CircuitView(QGraphicsView):
         box.setToolTip(label)
         label_area = width - _WIRE_NUMBER_MARGIN
         label_center = QPointF(left + _WIRE_NUMBER_MARGIN + label_area / 2, (top + bottom) / 2)
-        self._add_label(label, label_center, 12, _INK, max_width=label_area - _LABEL_PADDING)
+        self._add_wrapped_name(label, label_center, label_area - _LABEL_PADDING)
 
-        # Number the box's wires in gate order. Other wires inside the box stay unmarked.
         margin_x = left + _WIRE_NUMBER_MARGIN / 2
         for position, y in enumerate(rows):
             if position >= control_count:
                 self._add_label(str(position), QPointF(margin_x, y), 8, _ACCENT)
             elif top < y < bottom:
-                # A control between the box's wires goes in the margin, clear of the name.
                 self._add_control(QPointF(margin_x, y), pen)
             else:
                 self._add_control(QPointF(x, y), pen)
@@ -422,6 +409,21 @@ class CircuitView(QGraphicsView):
         label_width = QFontMetricsF(self._label_font(12)).horizontalAdvance(label)
         return min(_MAX_BOX_WIDTH, max(minimum, label_width + _LABEL_PADDING + extra))
 
+    def _add_wrapped_name(self, label: str, center: QPointF, width: float) -> None:
+        size = 12
+        metrics = QFontMetricsF(self._label_font(size))
+        lines = [label]
+        if metrics.horizontalAdvance(label) > width:
+            lines = [label[start:start + 4] for start in range(0, len(label), 4)]
+            while size > 1 and any(metrics.horizontalAdvance(line) > width for line in lines):
+                size -= 1
+                metrics = QFontMetricsF(self._label_font(size))
+
+        spacing = metrics.lineSpacing()
+        first_y = center.y() - (len(lines) - 1) * spacing / 2
+        for index, line in enumerate(lines):
+            self._add_label(line, QPointF(center.x(), first_y + index * spacing), size, _INK)
+
     def _label_font(self, size: int) -> QFont:
         font = self.font()
         font.setPointSize(size)
@@ -433,7 +435,6 @@ class CircuitView(QGraphicsView):
     ) -> None:
         font = self._label_font(size)
         if max_width is not None:
-            # A name too wide for its box ends in an ellipsis. The box's tooltip shows all of it.
             label = QFontMetricsF(font).elidedText(label, Qt.TextElideMode.ElideRight, max_width)
         text = self.scene().addSimpleText(label, font)
         text.setBrush(QBrush(color))

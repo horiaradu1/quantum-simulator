@@ -38,6 +38,7 @@ ArrowSpinBox {{
 }}
 QSpinBox#initialState QLineEdit {{ placeholder-text-color: #60576f; }}
 ArrowSpinBox:focus {{ border-color: {ACCENT}; }}
+ArrowSpinBox:disabled {{ background: #f5f2fa; border-color: {BORDER}; color: #716782; }}
 ArrowSpinBox::up-button {{ subcontrol-position: top right; }}
 ArrowSpinBox::down-button {{ subcontrol-position: bottom right; }}
 QGraphicsView, QTableWidget {{ border: 1px solid {BORDER}; border-radius: 5px; }}

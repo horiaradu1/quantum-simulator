@@ -14,8 +14,7 @@ from urllib.request import Request, urlopen
 import numpy as np
 from numpy.testing import assert_allclose, assert_array_equal
 
-from quantum_simulator import Circuit, PlacedGate, QuantumState, run
-from quantum_simulator.backend.gates import controlled
+from quantum_simulator import Circuit, CircuitGate, GateOperation, PlacedGate, run
 from quantum_simulator.server import MAX_REQUEST_BYTES, SimulationHandler, create_server
 
 BELL_DOCUMENT = {
@@ -88,36 +87,20 @@ class TestHttpServer(unittest.TestCase):
         assert_array_equal(amplitudes, run(Circuit.from_dict(BELL_DOCUMENT)).amplitudes)
         assert_allclose([outcome["probability"] for outcome in outcomes], [0.5, 0, 0, 0.5])
 
-    def test_controlled_matrix_gate_in_a_request(self):
-        """A request defining Controlled-U for a matrix U, on separated wires, gives the controlled(U) state."""
-        rotation = [
-            [0.6, -0.8],
-            [0.8,  0.6],
-        ]
-        document = {
-            "kind": "circuit",
-            "version": 1,
-            "qubits": 3,
-            "initial_bits": "000",
-            "columns": [
-                [{"gate": "H", "wires": [2]}],
-                [{"gate": "CRot", "wires": [2, 0]}],
-            ],
-            "definitions": [
-                {"id": "Rot", "kind": "matrix", "wire_count": 1,
-                 "matrix": [[[entry, 0] for entry in row] for row in rotation]},
-                {"id": "CRot", "kind": "controlled", "wire_count": 2, "base": "Rot"},
-            ],
-        }
+    def test_circuit_gate_in_a_request(self):
+        """A request defining a Bell gate from a circuit on q3 and q1 gives the same state as the Python definition."""
+        bell = CircuitGate("Bell", 2, (GateOperation("H", (0,)), GateOperation("CNOT", (0, 1))))
+        circuit = Circuit(4, "0000", (PlacedGate(0, "Bell", (3, 1)),), definitions=(bell,))
+        document = circuit.to_dict()
+        self.assertEqual(document["definitions"], [{
+            "id": "Bell", "kind": "circuit_gate", "wire_count": 2,
+            "operations": [{"gate": "H", "wires": [0]}, {"gate": "CNOT", "wires": [0, 1]}],
+        }])
+
         status, body = self.post(document)
         self.assertEqual(status, 200)
-
-        # The control q2 is in superposition, so only half of the state is rotated.
-        expected = QuantumState(3)
-        expected.apply_gate("H", 2)
-        expected.apply_gate(controlled(np.array(rotation)), 2, 0)
         amplitudes = [complex(*outcome["amplitude"]) for outcome in body["outcomes"]]
-        assert_allclose(amplitudes, expected.amplitudes, atol=1e-12)
+        assert_array_equal(amplitudes, run(circuit).amplitudes)
 
     def test_invalid_requests_return_an_error(self):
         """Invalid circuits, a negative seed and nonzero noise return status 400 with a message."""

@@ -26,8 +26,10 @@ uv run --locked python -m quantum_simulator
 
 - Set the qubit count and initial bits. Drag gates onto the circuit or select a gate and click a cell. Right-click to remove a gate.
 - **Run** shows amplitudes and probabilities. **Measure** collapses the state to one outcome.
-- **File** lets you save a circuit, reopen it or try an example. Saved circuits include the custom gates they use.
-- **Gates** lets you create a matrix gate on 1–3 qubits or add a control to an existing gate. Open **Manage gates** to inspect gates or delete unused custom gates.
+- Use **File** to start a circuit, open a saved circuit or try an example. **Save** (Ctrl+S) saves the open circuit or gate.
+- Under **Gates**, enter a matrix for 1–3 qubits, add a control to a gate or turn the current circuit into a gate. **Create** adds it to the palette. **Create and save…** also writes a gate file.
+- Use **Manage gates** to inspect gates, save a custom gate to its own file or delete an unused gate.
+- **File → Open gate** loads gates into the palette. Gates made from circuits also open for editing. Circuit and gate files include the custom gates they use.
 
 ## Python API
 
@@ -45,7 +47,7 @@ for outcome in state.outcomes():
 
 `run(circuit, settings)` also accepts `RunSettings(seed=...)` with a non-negative integer seed. Noise (`p`) must be 0 until it is implemented.
 
-Pass custom gates to `Circuit` in its `definitions` argument using `MatrixGate` or `ControlledGate`.
+Pass `MatrixGate`, `ControlledGate` or `CircuitGate` objects to `Circuit` through its `definitions` argument.
 
 ## HTTP server
 
@@ -68,7 +70,7 @@ POST a circuit document to `/simulate` with a `Content-Length` header. The serve
 }
 ```
 
-For custom gates, include a `definitions` list. Write each matrix entry as `[real, imaginary]`.
+List custom gates in `definitions`. Matrix entries use `[real, imaginary]`. Gates from circuits use `"kind": "circuit_gate"` and list their operations in order, e.g. `{"gate": "H", "wires": [0]}` for H on the first local wire.
 
 The response lists every basis state with its amplitude as `[real, imaginary]` and its probability. An invalid circuit returns status 400 with an `error` message. The server listens on `127.0.0.1` and allows requests from any browser origin.
 
@@ -84,8 +86,8 @@ The terminal checklist and [test report](tests/test_results.md) group results by
 
 | Suite | What it checks | Run separately |
 |---|---|---|
-| [Quantum tests](tests/quantum/) | Gate matrices, circuit equivalences, expected amplitudes and probabilities, initialization, and measurement | `uv run --locked python -m unittest discover -s tests/quantum -v` |
-| [Application tests](tests/application/) | Validation, gates, circuit files, editor, HTTP API and GUI | `uv run --locked python -m unittest discover -s tests/application -v` |
+| [Quantum tests](tests/quantum/) | Gates, circuit equivalences, states and measurement | `uv run --locked python -m unittest discover -s tests/quantum -v` |
+| [Application tests](tests/application/) | Validation, file handling, editor, HTTP API and GUI | `uv run --locked python -m unittest discover -s tests/application -v` |
 
 To run both directly with unittest, use `uv run --locked python -m unittest discover -s tests -v`.
 
@@ -97,6 +99,7 @@ To run both directly with unittest, use `uv run --locked python -m unittest disc
 - `src/quantum_simulator/resources/` — example circuits and images
 - `tests/` — [test suites and runner](#tests)
 - `data/circuits/` — locally saved circuits
+- `data/gates/` — saved gates
 - `pyproject.toml` — package configuration and dependency declarations
 
 

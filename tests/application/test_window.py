@@ -17,8 +17,10 @@ from PySide6.QtWidgets import QApplication, QDialog, QDialogButtonBox, QFileDial
 
 from quantum_simulator.backend import Circuit, ControlledGate, MatrixGate, PlacedGate, QuantumState, run
 from quantum_simulator.backend.circuit_file import save_circuit
+from quantum_simulator.backend.gate_file import load_gates, save_gates
+from quantum_simulator.backend.gate_library import CircuitGate, ClashChoice, GateOperation
 from quantum_simulator.gui.gate_button import GATE_MIME_TYPE
-from quantum_simulator.gui.gate_dialogs import MatrixGateDialog
+from quantum_simulator.gui.gate_dialogs import CircuitGateDialog, ControlledGateDialog, MatrixGateDialog
 from quantum_simulator.gui.gate_manager import GateManagerDialog
 from quantum_simulator.gui.window import SimulatorWindow
 
@@ -40,7 +42,11 @@ class WindowTestCase(unittest.TestCase):
         answer_discard.start()
         self.addCleanup(answer_discard.stop)
 
-        self.window = SimulatorWindow()
+        # Saved circuits and custom gates go to a temporary folder, never to the repository's data folder.
+        data_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(data_directory.cleanup)
+        self.data_directory = Path(data_directory.name)
+        self.window = SimulatorWindow(self.data_directory)
         self.window.show()
         self.addCleanup(self.dispose_window)
 
@@ -72,6 +78,20 @@ class WindowTestCase(unittest.TestCase):
         view = self.window.circuit_view
         position = view.mapFromScene(view.cell_center(step, wire))
         QTest.mouseClick(view.viewport(), Qt.MouseButton.RightButton, Qt.KeyboardModifier.NoModifier, position)
+
+    def create_gate(self, dialog_class, action, name, save_to=None):
+        """Name a gate in a creation dialog, then press Create, or Create and save… choosing save_to."""
+        def fill_and_choose(dialog):
+            dialog.name_edit.setText(name)
+            if save_to is None:
+                return QDialog.DialogCode.Accepted.value
+            with patch.object(QFileDialog, "getSaveFileName", return_value=(str(save_to), "")):
+                dialog.save_button.click()
+            return dialog.result()
+
+        # Replacing exec with a plain function makes it receive the real dialog the window opens.
+        with patch.object(dialog_class, "exec", fill_and_choose):
+            action.trigger()
 
 
 class TestGatePlacement(WindowTestCase):
@@ -159,8 +179,8 @@ class TestGatePlacement(WindowTestCase):
 class TestCircuitFiles(WindowTestCase):
     """Save and open circuits through the File menu."""
 
-    def test_save_clear_open_and_run(self):
-        """A saved circuit reopens after Clear and runs the same. An invalid file leaves it open."""
+    def test_save_new_open_and_run(self):
+        """A saved circuit reopens after New circuit and runs the same, with its name in the heading. An invalid file leaves it open."""
         window = self.window
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
@@ -175,11 +195,16 @@ class TestCircuitFiles(WindowTestCase):
         with patch.object(QInputDialog, "getText", return_value=("demo", True)):
             window.save_action.trigger()
 
-        window.clear_button.click()
+        self.assertEqual(window.circuit_title.text(), "Circuit: demo")
+
+        window.new_circuit_action.trigger()
+        self.assertEqual(window.circuit_title.text(), "Circuit: Untitled")
+        self.assertEqual(window.session.gates, [])
         window.qubit_count.setValue(2)
         saved_file = str(window.saved_circuits / "demo.json")
         with patch.object(QFileDialog, "getOpenFileName", return_value=(saved_file, "")):
             window.open_action.trigger()
+        self.assertEqual(window.circuit_title.text(), "Circuit: demo")
         self.assertEqual(window.initial_state.text(), "101")
         window.run_button.click()
         self.wait_for_editor()
@@ -211,6 +236,58 @@ class TestCircuitFiles(WindowTestCase):
 
 class TestUserGates(WindowTestCase):
     """Define gates through the Gates menu and use them in the circuit."""
+
+    def test_define_open_edit_and_save_gate(self):
+        """A saved gate from a circuit opens for editing and saves back to its own file, and an older circuit can use mine."""
+        window = self.window
+        window.qubit_count.setValue(1)
+        self.drop_gate("H", 0, 0)
+        # Outside the default gates folder, so saving must remember where the gate came from.
+        gate_file = self.data_directory / "shared" / "Inner.json"
+        self.create_gate(CircuitGateDialog, window.define_circuit_gate_action, "Inner", save_to=gate_file)
+        self.assertTrue(gate_file.exists())
+
+        window.new_circuit_action.trigger()
+        window.qubit_count.setValue(2)
+        self.drop_gate("Inner", 0, 0)
+        self.drop_gate("Inner", 0, 1)
+        with patch.object(QInputDialog, "getText", return_value=("test", True)):
+            window.save_button.click()
+
+        with patch.object(QFileDialog, "getOpenFileName", return_value=(str(gate_file), "")):
+            window.open_gate_action.trigger()
+        self.assertEqual(window.circuit_title.text(), "Gate: Inner")
+        self.assertFalse(window.qubit_count.isEnabled())
+        # Placing Inner inside itself would make a cycle.
+        self.assertFalse(window.gate_buttons["Inner"].isEnabled())
+
+        self.right_click_cell(0, 0)
+        self.drop_gate("X", 0, 0)
+        # A failed write keeps the edits pending, so the user can save again.
+        with (
+            patch.object(Path, "replace", side_effect=OSError("disk full")),
+            patch.object(QMessageBox, "warning") as warning,
+        ):
+            window.save_button.click()
+        warning.assert_called_once()
+        self.assertTrue(window.session.modified)
+        self.assertEqual(window.session.library.circuit_gate("Inner").operations, (GateOperation("H", (0,)),))
+
+        window.save_button.click()
+        self.assertEqual(window.circuit_title.text(), "Gate: Inner")
+        self.assertFalse(window.session.modified)
+        self.assertEqual(load_gates(gate_file)[0].operations, (GateOperation("X", (0,)),))
+
+        # test.json still holds the old Inner. Using mine runs the edited gate on both wires.
+        test_file = str(window.saved_circuits / "test.json")
+        with (
+            patch.object(QFileDialog, "getOpenFileName", return_value=(test_file, "")),
+            patch.object(SimulatorWindow, "_resolve_name_clash", return_value=ClashChoice.USE_LOCAL),
+        ):
+            window.open_action.trigger()
+        self.assertEqual(window.circuit_title.text(), "Circuit: test")
+        self.assertTrue(window.session.modified)
+        assert_array_equal(run(window.session.circuit("00")).amplitudes, [0, 0, 0, 1])
 
     def test_define_matrix_gate_place_and_run(self):
         """A typed matrix becomes a palette gate that runs like its matrix. A nonunitary one cannot be added."""
@@ -246,18 +323,218 @@ class TestUserGates(WindowTestCase):
         self.wait_for_editor()
         assert_allclose(window.session.result.amplitudes, [0.6, 0, 0.8, 0], atol=1e-12)
 
+    def test_create_or_create_and_save(self):
+        """Create adds an unsaved gate. Create and save… stays open after a cancel or failed write, then saves the gate with its base."""
+        window = self.window
+        self.create_gate(MatrixGateDialog, window.new_matrix_gate_action, "Rot")
+        self.assertEqual(window.session.unsaved_gates, {"Rot"})
+        self.assertEqual(list(self.data_directory.rglob("*.json")), [])
+
+        saved = self.data_directory / "gates" / "CRot.json"
+
+        def try_saving(dialog):
+            dialog.base_choice.setCurrentText("Rot")
+            # A cancelled file picker and a failed write both keep the dialog and its input.
+            with patch.object(QFileDialog, "getSaveFileName", return_value=("", "")):
+                dialog.save_button.click()
+            with (
+                patch.object(QFileDialog, "getSaveFileName", return_value=(str(saved), "")),
+                patch.object(Path, "replace", side_effect=OSError("disk full")),
+                patch.object(QMessageBox, "warning"),
+            ):
+                dialog.save_button.click()
+            self.assertEqual(dialog.result(), QDialog.DialogCode.Rejected.value)
+            self.assertEqual(dialog.name_edit.text(), "CRot")
+
+            with patch.object(QFileDialog, "getSaveFileName", return_value=(str(saved), "")):
+                dialog.save_button.click()
+            return dialog.result()
+
+        with patch.object(ControlledGateDialog, "exec", try_saving):
+            window.new_controlled_gate_action.trigger()
+        self.assertEqual([definition.gate_id for definition in load_gates(saved)], ["Rot", "CRot"])
+        self.assertEqual(window.session.unsaved_gates, set())
+
+        # Opening the controlled gate's file elsewhere brings its base along. Neither can be edited.
+        fresh = SimulatorWindow(self.data_directory / "other session")
+        self.addCleanup(fresh.deleteLater)
+        with (
+            patch.object(QFileDialog, "getOpenFileName", return_value=(str(saved), "")),
+            patch.object(QMessageBox, "information") as information,
+        ):
+            fresh.open_gate_action.trigger()
+        information.assert_called_once()
+        self.assertEqual([definition.gate_id for definition in fresh.session.library.user_definitions], ["Rot", "CRot"])
+        self.assertEqual(fresh.circuit_title.text(), "Circuit: Untitled")
+
+
+class TestGateFiles(WindowTestCase):
+    """Open and save gate files through the File menu, resolve name clashes, and warn about unsaved gates."""
+
+    def test_name_conflicts_and_bad_gate_files(self):
+        """A clashing gate in an opened circuit is renamed or replaced by mine. A cancel or a bad gate file changes nothing."""
+        window = self.window
+        window._add_definition(MatrixGate("Rot", [[0.6, -0.8], [0.8, 0.6]]))
+        broken = self.data_directory / "broken.json"
+        broken.write_text(
+            '{"kind": "gate_file", "version": 1, "definitions": '
+            '[{"id": "CFoo", "kind": "controlled", "base": "Foo", "wire_count": 2}]}',
+            encoding="utf-8",
+        )
+        with (
+            patch.object(QFileDialog, "getOpenFileName", return_value=(str(broken), "")),
+            patch.object(QMessageBox, "warning") as warning,
+        ):
+            window.open_gate_action.trigger()
+        warning.assert_called_once()
+
+        # This circuit's Rot is a different gate, so opening it asks what to do.
+        self.drop_gate("H", 0, 0)
+        other = self.data_directory / "other.json"
+        other_rot = MatrixGate("Rot", [[0, 1], [1, 0]])
+        save_circuit(other, Circuit(1, "0", (PlacedGate(0, "Rot", (0,)),), definitions=(other_rot,)))
+        with patch.object(QFileDialog, "getOpenFileName", return_value=(str(other), "")):
+            with patch.object(SimulatorWindow, "_resolve_name_clash", return_value=None):
+                window.open_action.trigger()
+            self.assertEqual(window.session.gates, [PlacedGate(0, "H", (0,))])
+            self.assertEqual([definition.gate_id for definition in window.session.library.user_definitions], ["Rot"])
+
+            with patch.object(SimulatorWindow, "_resolve_name_clash", return_value="Flip"):
+                window.open_action.trigger()
+            self.assertEqual(window.session.gates, [PlacedGate(0, "Flip", (0,))])
+            self.assertEqual(
+                [definition.gate_id for definition in window.session.library.user_definitions], ["Rot", "Flip"]
+            )
+            self.assertIn("Flip", window.gate_buttons)
+
+            # Flip came in from a circuit. Manage gates can save it on its own.
+            flip_file = self.data_directory / "gates" / "Flip.json"
+
+            def save_flip(dialog):
+                dialog.select_gate("Flip")
+                with patch.object(QFileDialog, "getSaveFileName", return_value=(str(flip_file), "")):
+                    dialog.save_button.click()
+
+            with patch.object(GateManagerDialog, "exec", save_flip):
+                window.manage_gates_action.trigger()
+            self.assertEqual([definition.gate_id for definition in load_gates(flip_file)], ["Flip"])
+            self.assertNotIn("Flip", window.session.unsaved_gates)
+
+            # Use mine: the circuit's Rot becomes the local one, so the circuit differs from its file.
+            with patch.object(SimulatorWindow, "_resolve_name_clash", return_value=ClashChoice.USE_LOCAL):
+                window.open_action.trigger()
+        self.assertEqual(window.session.gates, [PlacedGate(0, "Rot", (0,))])
+        self.assertEqual(window.session.library.matrix("Rot")[1, 0], 0.8)
+        self.assertTrue(window.session.modified)
+
+    def test_opening_a_gate_follows_the_gate_chosen(self):
+        """Use mine with a local matrix gate keeps the open circuit and edits nothing. Cancel leaves the palette alone."""
+        window = self.window
+        window._add_definition(MatrixGate("Inner", [[0, 1], [1, 0]]))
+        self.drop_gate("H", 0, 0)
+        gate_file = self.data_directory / "Inner.json"
+        save_gates(gate_file, [CircuitGate("Inner", 1, (GateOperation("H", (0,)),))])
+        palette = list(window.gate_buttons)
+
+        with patch.object(QFileDialog, "getOpenFileName", return_value=(str(gate_file), "")):
+            with patch.object(SimulatorWindow, "_resolve_name_clash", return_value=None):
+                window.open_gate_action.trigger()
+            self.assertEqual(list(window.gate_buttons), palette)
+
+            with (
+                patch.object(SimulatorWindow, "_resolve_name_clash", return_value=ClashChoice.USE_LOCAL),
+                patch.object(QMessageBox, "information") as information,
+                patch.object(QMessageBox, "question") as question,
+            ):
+                window.open_gate_action.trigger()
+        information.assert_called_once()
+        # Nothing replaces the circuit, so it is not even asked about.
+        question.assert_not_called()
+        self.assertEqual(window.circuit_title.text(), "Circuit: Untitled")
+        self.assertEqual(window.session.gates, [PlacedGate(0, "H", (0,))])
+
+    def test_saving_a_gate_keeps_the_other_gates_in_its_file(self):
+        """Editing one of two independent gates in a file and saving it rewrites only that gate."""
+        window = self.window
+        first = CircuitGate("First", 1, (GateOperation("H", (0,)),))
+        second = CircuitGate("Second", 1, (GateOperation("X", (0,)),))
+        gate_file = self.data_directory / "pair.json"
+        save_gates(gate_file, [first, second])
+
+        with (
+            patch.object(QFileDialog, "getOpenFileName", return_value=(str(gate_file), "")),
+            patch.object(QInputDialog, "getItem", return_value=("First", True)),
+        ):
+            window.open_gate_action.trigger()
+        self.assertEqual(window.circuit_title.text(), "Gate: First")
+        window.session.delete_gate("Second")
+        window._remove_gate_button("Second")
+        self.drop_gate("Z", 1, 0)
+        window.save_button.click()
+
+        saved = {definition.gate_id: definition for definition in load_gates(gate_file)}
+        self.assertEqual(saved["Second"], second)
+        self.assertEqual(saved["First"].operations, (GateOperation("H", (0,)), GateOperation("Z", (0,))))
+
+    def test_overwriting_last_saved_copy_restores_close_warning(self):
+        """A gate survives overwriting one copy, but losing its last file triggers the close warning."""
+        window = self.window
+        window._add_definition(MatrixGate("Flip", [[0, 1], [1, 0]]))
+        window._add_definition(MatrixGate("Phase", [[1, 0], [0, -1]]))
+        self.drop_gate("Flip", 0, 0)
+        with patch.object(QInputDialog, "getText", return_value=("demo", True)):
+            window.save_button.click()
+        with patch.object(QFileDialog, "getSaveFileName", return_value=(str(self.data_directory / "gate.json"), "")):
+            window._save_gate_as("Flip")
+            window._save_gate_as("Phase")
+        self.assertFalse(window.session.unsaved_gates)
+        self.right_click_cell(0, 0)
+        with (
+            patch.object(QInputDialog, "getText", return_value=("demo", True)),
+            patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes),
+        ):
+            window.save_button.click()
+        self.assertEqual(window.session.unsaved_gates, {"Flip"})
+        with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Cancel) as question:
+            window.close()
+        question.assert_called_once()
+        self.assertTrue(window.isVisible())
+
+    def test_closing_asks_about_gates_saved_nowhere(self):
+        """Closing asks before losing a custom gate that no saved file holds. Saving a circuit that uses it settles it."""
+        window = self.window
+        window._add_definition(MatrixGate("Rot", [[0.6, -0.8], [0.8, 0.6]]))
+        window._add_definition(MatrixGate("Flip", [[0, 1], [1, 0]]))
+        self.drop_gate("Rot", 0, 0)
+        with patch.object(QInputDialog, "getText", return_value=("demo", True)):
+            window.save_action.trigger()
+        self.assertEqual(window.session.unsaved_gates, {"Flip"})
+
+        with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Cancel) as question:
+            window.close()
+        question.assert_called_once()
+        self.assertTrue(window.isVisible())
+
+        self.drop_gate("Flip", 1, 0)
+        with patch.object(QInputDialog, "getText", return_value=("with flip", True)):
+            window.save_action.trigger()
+        with patch.object(QMessageBox, "question") as question:
+            window.close()
+        question.assert_not_called()
+        self.assertFalse(window.isVisible())
+
 
 class TestUnsavedChanges(WindowTestCase):
     """Ask before unsaved edits or placed gates are lost."""
 
     def test_prompt_before_replacing_unsaved_changes(self):
-        """Opening, clearing or closing asks first. Cancel keeps the circuit, and Don't save goes ahead."""
+        """Opening, starting a new circuit or closing asks first. Cancel keeps the circuit, and Don't save goes ahead."""
         window = self.window
         self.drop_gate("H", 0, 0)
         cancel = QMessageBox.StandardButton.Cancel
         with patch.object(QMessageBox, "question", return_value=cancel) as question:
             window.examples_menu.actions()[0].trigger()
-            window.clear_button.click()
+            window.new_circuit_action.trigger()
             window.close()
         self.assertEqual(question.call_count, 3)
         self.assertEqual(window.session.gates, [PlacedGate(0, "H", (0,))])
@@ -315,19 +592,6 @@ class TestGateManager(WindowTestCase):
             window.manage_gates_action.trigger()
         self.assertNotIn("Rot", window.gate_buttons)
         self.assertNotIn("Rot", window.session.library)
-
-    def test_symbol_preview_never_outlines_a_cell(self):
-        """With the pointer resting on the symbol preview, choosing another gate by keyboard outlines no cell."""
-        dialog = GateManagerDialog(self.window.session, self.window)
-        self.addCleanup(dialog.close)
-        dialog.show()
-        QTest.qWaitForWindowExposed(dialog)
-        preview = dialog.preview
-        QTest.mouseMove(preview.viewport(), preview.mapFromScene(preview.cell_center(0, 0)))
-
-        QTest.keyClick(dialog.gate_list, Qt.Key.Key_Down)
-        self.assertEqual(dialog.gate_list.currentItem().text(), "X")
-        self.assertIsNone(preview.highlighted_cell)
 
     def test_large_gate_shows_a_note_instead_of_its_matrix(self):
         """A six-wire gate shows a note instead of building its 64×64 matrix table."""

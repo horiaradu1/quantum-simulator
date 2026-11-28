@@ -4,7 +4,7 @@ import unittest
 
 from quantum_simulator.backend.circuit import PlacedGate
 from quantum_simulator.backend.editor import EditorSession, Placement
-from quantum_simulator.backend.gate_library import ControlledGate, MatrixGate
+from quantum_simulator.backend.gate_library import CircuitGate, ControlledGate, GateOperation, MatrixGate
 
 
 def _run(session, initial_bits):
@@ -79,20 +79,46 @@ class TestEditorSession(unittest.TestCase):
         self.assertEqual(session.selected_gate, "H")
 
     def test_gates_in_use_cannot_be_deleted(self):
-        """A custom gate can be deleted only when no placed gate or other custom gate uses it."""
+        """A custom gate can be deleted only when no placed gate, controlled gate or gate from a circuit uses it."""
         session = EditorSession(qubits=2)
         rotation = MatrixGate("Rot", [[0.6, -0.8], [0.8, 0.6]])
-        session.library.add(rotation, ControlledGate("CRot", "Rot", 2))
+        pair = CircuitGate("Pair", 2, (GateOperation("Rot", (1,)), GateOperation("CNOT", (0, 1))))
+        session.library.add(rotation, ControlledGate("CRot", "Rot", 2), pair)
         session.select_gate("CRot")
         session.place(0, 0)
         session.place(0, 1)
 
-        # H is built in, CRot is placed, and CRot is built from Rot.
+        # H is built in, CRot is placed, and CRot and Pair are built from Rot.
         for gate_id in ("H", "CRot", "Rot"):
             with self.subTest(gate=gate_id), self.assertRaises(ValueError):
                 session.delete_gate(gate_id)
 
         session.remove_at(0, 0)
         session.delete_gate("CRot")
+        with self.assertRaisesRegex(ValueError, "Pair is built from Rot"):
+            session.delete_gate("Rot")
+        session.delete_gate("Pair")
         session.delete_gate("Rot")
         self.assertEqual(session.library.user_definitions, ())
+
+    def test_gate_is_opened_and_saved_like_a_circuit(self):
+        """Opening a gate replaces the circuit. Saving it changes the gate for every use, and a new circuit replaces it."""
+        session = EditorSession(qubits=2)
+        session.library.add(CircuitGate("Inner", 1, (GateOperation("H", (0,)),)))
+
+        session.edit_gate("Inner")
+        self.assertEqual((session.qubits, session.gates), (1, [PlacedGate(0, "H", (0,))]))
+        # The open gate cannot be placed inside itself or deleted.
+        self.assertFalse(session.can_place("Inner"))
+        self.assertIsNotNone(session.deletion_blocker("Inner"))
+
+        session.remove_at(0, 0)
+        session.select_gate("X")
+        session.place(0, 0)
+        session.save_gate()
+        self.assertEqual(session.library.circuit_gate("Inner").operations, (GateOperation("X", (0,)),))
+        self.assertFalse(session.modified)
+
+        session.new_circuit()
+        self.assertEqual((session.open_gate, session.gates), (None, []))
+

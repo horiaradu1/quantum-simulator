@@ -23,7 +23,6 @@ class BasisStateSpinBox(ArrowSpinBox):
         self.setRange(0, 2**count - 1)
         value = int(resized, 2)
         self.setValue(value)
-        # A width change can require new leading zeros even when the value is the same.
         self.lineEdit().setText(self.textFromValue(value))
         self.lineEdit().setPlaceholderText(f"{count}-bit state")
 
