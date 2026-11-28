@@ -2,6 +2,7 @@
 
 import sys
 import unittest
+from collections import Counter
 from dataclasses import dataclass, field
 from inspect import getsourcefile, getsourcelines, unwrap
 from os.path import relpath
@@ -155,10 +156,20 @@ class ChecklistResult(unittest.TextTestResult):
             self._record_subtest(test, subtest, status)
             self._write_console(test, "✗", status, " (subtest failed)")
 
+    def outcome_summary(self) -> str:
+        counts = Counter(entry.status for group in self._report_groups.values() for entry in group.values())
+        failed = counts["FAIL"] + counts["ERROR"] + counts["UNEXPECTED PASS"]
+        summary = f"{counts['PASS']} passed, {failed} failed"
+        if counts["SKIP"]:
+            summary += f", {counts['SKIP']} skipped"
+        if counts["EXPECTED FAILURE"]:
+            summary += f", {counts['EXPECTED FAILURE']} expected failures"
+        return summary
+
     def write_markdown(self, destination: Path) -> None:
         outcome = "✅ Passed" if self.wasSuccessful() else "❌ Failed"
         count = f"{self.testsRun} {'test' if self.testsRun == 1 else 'tests'}"
-        lines = ["# Test results", "", f"**{outcome}** · {count} run"]
+        lines = ["# Test results", "", f"**{outcome}** · {count} run", "", self.outcome_summary()]
         previous_section = None
         for (section, title), entries in self._report_groups.items():
             if section != previous_section:
@@ -210,6 +221,7 @@ def main() -> int:
     suite = unittest.TestSuite(sorted(discovered, key=_checklist_order))
     runner = ChecklistRunner(stream=sys.stdout)
     result = runner.run(suite)
+    print(result.outcome_summary())
     report_path = test_directory / "test_results.md"
     result.write_markdown(report_path)
     print(f"Markdown report saved to {report_path}")

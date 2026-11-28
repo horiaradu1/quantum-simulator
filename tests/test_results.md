@@ -2,6 +2,8 @@
 
 **✅ Passed** · 95 tests run
 
+95 passed, 0 failed
+
 ## Quantum tests
 
 ### Gate properties
