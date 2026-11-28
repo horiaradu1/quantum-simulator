@@ -192,7 +192,7 @@ class TestCircuitFiles(WindowTestCase):
         self.drop_gate("CNOT", 2, 2)
         self.drop_gate("CNOT", 2, 0)
         expected = run(window.session.circuit("101")).amplitudes
-        with patch.object(QInputDialog, "getText", return_value=("demo", True)):
+        with patch.object(QFileDialog, "getSaveFileName", return_value=(str(window.saved_circuits / "demo.json"), "")):
             window.save_action.trigger()
 
         self.assertEqual(window.circuit_title.text(), "Circuit: demo")
@@ -251,7 +251,7 @@ class TestUserGates(WindowTestCase):
         window.qubit_count.setValue(2)
         self.drop_gate("Inner", 0, 0)
         self.drop_gate("Inner", 0, 1)
-        with patch.object(QInputDialog, "getText", return_value=("test", True)):
+        with patch.object(QFileDialog, "getSaveFileName", return_value=(str(window.saved_circuits / "test.json"), "")):
             window.save_button.click()
 
         with patch.object(QFileDialog, "getOpenFileName", return_value=(str(gate_file), "")):
@@ -277,6 +277,14 @@ class TestUserGates(WindowTestCase):
         self.assertEqual(window.circuit_title.text(), "Gate: Inner")
         self.assertFalse(window.session.modified)
         self.assertEqual(load_gates(gate_file)[0].operations, (GateOperation("X", (0,)),))
+
+        copy = self.data_directory / "copy.json"
+        with patch.object(QFileDialog, "getSaveFileName", return_value=(str(copy), "")):
+            window.save_as_action.trigger()
+        self.drop_gate("Z", 1, 0)
+        window.save_button.click()
+        self.assertEqual(len(load_gates(copy)[0].operations), 2)
+        self.assertEqual(len(load_gates(gate_file)[0].operations), 1)
 
         # test.json still holds the old Inner. Using mine runs the edited gate on both wires.
         test_file = str(window.saved_circuits / "test.json")
@@ -308,6 +316,9 @@ class TestUserGates(WindowTestCase):
             # An expression shows its value under the cell.
             fill_cells(dialog, [["1", "0"], ["0", "exp(i*pi)"]])
             self.assertEqual(dialog.cell_values[1][1].text(), "= -1")
+            self.assertTrue(dialog.cells[1][1].font().bold())
+            dialog.cells[1][1].setText("1-1")
+            self.assertFalse(dialog.cells[1][1].font().bold())
 
             fill_cells(dialog, [["0.6", "-0.8"], ["0.8", "0.6"]])
             self.assertTrue(ok_button.isEnabled())
@@ -482,7 +493,7 @@ class TestGateFiles(WindowTestCase):
         window._add_definition(MatrixGate("Flip", [[0, 1], [1, 0]]))
         window._add_definition(MatrixGate("Phase", [[1, 0], [0, -1]]))
         self.drop_gate("Flip", 0, 0)
-        with patch.object(QInputDialog, "getText", return_value=("demo", True)):
+        with patch.object(QFileDialog, "getSaveFileName", return_value=(str(window.saved_circuits / "demo.json"), "")):
             window.save_button.click()
         with patch.object(QFileDialog, "getSaveFileName", return_value=(str(self.data_directory / "gate.json"), "")):
             window._save_gate_as("Flip")
@@ -506,7 +517,7 @@ class TestGateFiles(WindowTestCase):
         window._add_definition(MatrixGate("Rot", [[0.6, -0.8], [0.8, 0.6]]))
         window._add_definition(MatrixGate("Flip", [[0, 1], [1, 0]]))
         self.drop_gate("Rot", 0, 0)
-        with patch.object(QInputDialog, "getText", return_value=("demo", True)):
+        with patch.object(QFileDialog, "getSaveFileName", return_value=(str(window.saved_circuits / "demo.json"), "")):
             window.save_action.trigger()
         self.assertEqual(window.session.unsaved_gates, {"Flip"})
 
@@ -516,8 +527,8 @@ class TestGateFiles(WindowTestCase):
         self.assertTrue(window.isVisible())
 
         self.drop_gate("Flip", 1, 0)
-        with patch.object(QInputDialog, "getText", return_value=("with flip", True)):
-            window.save_action.trigger()
+        with patch.object(QFileDialog, "getSaveFileName", return_value=(str(window.saved_circuits / "with flip.json"), "")):
+            window.save_as_action.trigger()
         with patch.object(QMessageBox, "question") as question:
             window.close()
         question.assert_not_called()

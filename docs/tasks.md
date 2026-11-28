@@ -43,12 +43,12 @@ The simulator returns fixed-width basis labels from `sample()` and `measure()`. 
 
 - ✅ Add the following gates: Y, Z, T, CY, CZ, CT, CS · `_SINGLE_QUBIT_GATES` and `_CONTROLLED_GATES` in [gates.py](../src/quantum_simulator/backend/gates.py)
 - ✅ Support for user-defined gates given in matrix form · `MatrixGate` and `GateLibrary` in [gate_library.py](../src/quantum_simulator/backend/gate_library.py), dialog in [gate_dialogs.py](../src/quantum_simulator/gui/gate_dialogs.py)
-- ⚪ Support for user-defined gates given as series of other defined gates
-- ⚪ Support for Controlled-U gate (where U is any already defined gate)
-- ⚪ Support for user-defined gates export and import
+- ✅ Support for user-defined gates given as series of other defined gates · `CircuitGate` in [gate_library.py](../src/quantum_simulator/backend/gate_library.py)
+- ✅ Support for Controlled-U gate (where U is any already defined gate) · `ControlledGate` in [gate_library.py](../src/quantum_simulator/backend/gate_library.py)
+- ✅ Support for user-defined gates export and import · [gate_file.py](../src/quantum_simulator/backend/gate_file.py)
 - ✅ Allow controlled gates to have the control and the target on any of the N qubit (not necessarily adjacent) · `QuantumState.apply_gate()` in [state.py](../src/quantum_simulator/backend/state.py)
 - ⚪ Allow measurement to be applied to any of the N qubits (not necessarily on the entire state)
-- ⚪ Support for circuit export and import
+- ✅ Support for circuit export and import · [circuit_file.py](../src/quantum_simulator/backend/circuit_file.py)
 - ⚪ Support for computing the density matrix of a given state
 - ⚪ Add ability to measure in +/- basis
 - ⚪ Add ability to simulate quantum noise: random bit-flip (X gate) and random phase-flip (Z gate) for each qubit after each gate applied, with probability p (configurable)

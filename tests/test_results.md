@@ -321,30 +321,30 @@
 
 ### Window
 
-- ✅ **[Closing during a run discards unfinished results.](application/test_window.py#L664)**
-- ✅ **[A failed run returns to the editor and can be retried.](application/test_window.py#L651)**
-- ✅ **[Run shows loading, then the Bell pair can be measured.](application/test_window.py#L629)**
-- ✅ **[Typing 25 qubits shows a warning and keeps 2 qubits, so no oversized state is built.](application/test_window.py#L617)**
+- ✅ **[Closing during a run discards unfinished results.](application/test_window.py#L675)**
+- ✅ **[A failed run returns to the editor and can be retried.](application/test_window.py#L662)**
+- ✅ **[Run shows loading, then the Bell pair can be measured.](application/test_window.py#L640)**
+- ✅ **[Typing 25 qubits shows a warning and keeps 2 qubits, so no oversized state is built.](application/test_window.py#L628)**
 - ✅ **[An opened circuit shows all 30 of its empty columns, so a gate can be dropped in the last one.](application/test_window.py#L224)**
 - ✅ **[A saved circuit reopens after New circuit and runs the same, with its name in the heading. An invalid file leaves it open.](application/test_window.py#L182)**
-- ✅ **[Closing asks before losing a custom gate that no saved file holds. Saving a circuit that uses it settles it.](application/test_window.py#L503)**
-- ✅ **[A clashing gate in an opened circuit is renamed or replaced by mine. A cancel or a bad gate file changes nothing.](application/test_window.py#L374)**
-- ✅ **[Use mine with a local matrix gate keeps the open circuit and edits nothing. Cancel leaves the palette alone.](application/test_window.py#L430)**
-- ✅ **[A gate survives overwriting one copy, but losing its last file triggers the close warning.](application/test_window.py#L479)**
-- ✅ **[Editing one of two independent gates in a file and saving it rewrites only that gate.](application/test_window.py#L456)**
-- ✅ **[A placed custom gate shows its matrix but cannot be deleted until it is removed from the circuit.](application/test_window.py#L570)**
-- ✅ **[A six-wire gate shows a note instead of building its 64×64 matrix table.](application/test_window.py#L596)**
+- ✅ **[Closing asks before losing a custom gate that no saved file holds. Saving a circuit that uses it settles it.](application/test_window.py#L514)**
+- ✅ **[A clashing gate in an opened circuit is renamed or replaced by mine. A cancel or a bad gate file changes nothing.](application/test_window.py#L385)**
+- ✅ **[Use mine with a local matrix gate keeps the open circuit and edits nothing. Cancel leaves the palette alone.](application/test_window.py#L441)**
+- ✅ **[A gate survives overwriting one copy, but losing its last file triggers the close warning.](application/test_window.py#L490)**
+- ✅ **[Editing one of two independent gates in a file and saving it rewrites only that gate.](application/test_window.py#L467)**
+- ✅ **[A placed custom gate shows its matrix but cannot be deleted until it is removed from the circuit.](application/test_window.py#L581)**
+- ✅ **[A six-wire gate shows a note instead of building its 64×64 matrix table.](application/test_window.py#L607)**
 - ✅ **[Dragging H and CNOT after right-clicking away a stray X gives the Python Bell state.](application/test_window.py#L100)**
 - ✅ **[Dragging CY from q3 to q0 turns 0001 into +i on 1001. From q0 to q3, 0001 is unchanged.](application/test_window.py#L118)**
   - ✅ [`(wires=(3, 0))`](application/test_window.py#L118)
   - ✅ [`(wires=(0, 3))`](application/test_window.py#L118)
 - ✅ **[Choosing a new column restarts Toffoli at its first control.](application/test_window.py#L159)**
 - ✅ **[A CNOT keeps its control after a duplicate or blocked target.](application/test_window.py#L140)**
-- ✅ **[Disposing of a busy window destroys its timer.](application/test_window.py#L716)**
-- ✅ **[Rerunning and clearing release previous states.](application/test_window.py#L694)**
-- ✅ **[Lowering the qubit count asks before removing gates. Cancel keeps them, and OK removes them.](application/test_window.py#L548)**
-- ✅ **[Opening, starting a new circuit or closing asks first. Cancel keeps the circuit, and Don't save goes ahead.](application/test_window.py#L530)**
-- ✅ **[Create adds an unsaved gate. Create and save… stays open after a cancel or failed write, then saves the gate with its base.](application/test_window.py#L326)**
-- ✅ **[A typed matrix becomes a palette gate that runs like its matrix. A nonunitary one cannot be added.](application/test_window.py#L292)**
+- ✅ **[Disposing of a busy window destroys its timer.](application/test_window.py#L727)**
+- ✅ **[Rerunning and clearing release previous states.](application/test_window.py#L705)**
+- ✅ **[Lowering the qubit count asks before removing gates. Cancel keeps them, and OK removes them.](application/test_window.py#L559)**
+- ✅ **[Opening, starting a new circuit or closing asks first. Cancel keeps the circuit, and Don't save goes ahead.](application/test_window.py#L541)**
+- ✅ **[Create adds an unsaved gate. Create and save… stays open after a cancel or failed write, then saves the gate with its base.](application/test_window.py#L337)**
+- ✅ **[A typed matrix becomes a palette gate that runs like its matrix. A nonunitary one cannot be added.](application/test_window.py#L300)**
 - ✅ **[A saved gate from a circuit opens for editing and saves back to its own file, and an older circuit can use mine.](application/test_window.py#L240)**
-- ✅ **[The course logo loads at its fixed height below the results.](application/test_window.py#L679)**
+- ✅ **[The course logo loads at its fixed height below the results.](application/test_window.py#L690)**

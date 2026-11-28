@@ -36,7 +36,7 @@ from PySide6.QtWidgets import (
 
 from ..backend import Outcome, QuantumState
 from ..backend.circuit import MAX_QUBITS
-from ..backend.circuit_file import load_circuit, save_circuit, saved_circuit_path, shared_circuits
+from ..backend.circuit_file import load_circuit, save_circuit, shared_circuits
 from ..backend.editor import EditorSession, Placement
 from ..backend.gate_file import export_gates, load_gates, save_gates
 from ..backend.gate_library import ClashChoice, GateDefinition, GateLibrary, NameClash, outermost_gates
@@ -91,6 +91,7 @@ class SimulatorWindow(QMainWindow):
         self.session = EditorSession(qubits=2)
         self.saved_circuits = data_directory / "circuits"
         self.saved_gates = data_directory / "gates"
+        self._circuit_path = None
         self._circuit_name = "Untitled"
         self._open_gate_path: Path | None = None
         self._open_gate_file_gates: tuple[GateDefinition, ...] = ()
@@ -166,9 +167,12 @@ class SimulatorWindow(QMainWindow):
         self.open_action.triggered.connect(self._choose_circuit_file)
         self.open_gate_action = file_menu.addAction("Open &gate…")
         self.open_gate_action.triggered.connect(self._choose_gate_file)
-        self.save_action = file_menu.addAction("&Save…")
+        self.save_action = file_menu.addAction("&Save")
         self.save_action.setShortcut(QKeySequence.StandardKey.Save)
         self.save_action.triggered.connect(self._save)
+        self.save_as_action = file_menu.addAction("Save &As…")
+        self.save_as_action.setShortcut(QKeySequence.StandardKey.SaveAs)
+        self.save_as_action.triggered.connect(self._save_as)
 
         gates_menu = self.menuBar().addMenu("&Gates")
         self.new_matrix_gate_action = gates_menu.addAction("New &matrix gate…")
@@ -184,7 +188,7 @@ class SimulatorWindow(QMainWindow):
         self.examples_menu = file_menu.addMenu("&Examples")
         for name, path in shared_circuits().items():
             action = self.examples_menu.addAction(name)
-            action.triggered.connect(partial(self._open_circuit, path))
+            action.triggered.connect(partial(self._open_circuit, path, example=True))
 
     def _build_controls(self) -> QFrame:
         frame, layout = _panel()
@@ -370,27 +374,36 @@ class SimulatorWindow(QMainWindow):
     def _save(self) -> bool:
         """Save the open gate or circuit. Return whether it was saved."""
         if self.session.open_gate is not None:
-            return self._save_open_gate()
-        return self._save_circuit()
+            return self._save_open_gate(self._open_gate_path)
+        if self._circuit_path is None:
+            return self._save_as()
+        return self._save_circuit(self._circuit_path)
 
-    def _save_circuit(self) -> bool:
-        """Ask for a name and save the circuit. Return whether it was saved."""
+    def _save_as(self) -> bool:
+        gate = self.session.open_gate
+        if gate is not None:
+            suggested = self._open_gate_path
+            kind = "Gate"
+        else:
+            suggested = self._circuit_path or self.saved_circuits / f"{self._circuit_name}.json"
+            kind = "Circuit"
+        try:
+            suggested.parent.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            suggested = Path(suggested.name)
+        filename, _ = QFileDialog.getSaveFileName(
+            self, f"Save {kind.lower()} as", str(suggested), f"{kind} files (*.json)"
+        )
+        if not filename:
+            return False
+        if gate is not None:
+            return self._save_open_gate(Path(filename))
+        return self._save_circuit(Path(filename))
+
+    def _save_circuit(self, path: Path) -> bool:
         if not self.initial_state.hasAcceptableInput():
             QMessageBox.warning(self, "Save circuit", "Enter a complete initial state before saving.")
             return False
-        name, accepted = QInputDialog.getText(self, "Save circuit", "Circuit name:")
-        if not accepted:
-            return False
-        try:
-            path = saved_circuit_path(name, self.saved_circuits)
-        except ValueError as error:
-            QMessageBox.warning(self, "Save circuit", str(error))
-            return False
-        if path.exists():
-            answer = QMessageBox.question(self, "Save circuit", f"Replace the saved circuit {path.stem}?")
-            if answer != QMessageBox.StandardButton.Yes:
-                return False
-
         circuit = self.session.circuit(self.initial_state.text())
         try:
             save_circuit(path, circuit, self.session.settings)
@@ -399,6 +412,7 @@ class SimulatorWindow(QMainWindow):
             return False
         self.session.modified = False
         self.session.record_file(path, circuit.definitions)
+        self._circuit_path = path
         self._show_circuit_name(path.stem)
         return True
 
@@ -424,7 +438,7 @@ class SimulatorWindow(QMainWindow):
         if path:
             self._open_circuit(Path(path))
 
-    def _open_circuit(self, path: Traversable) -> None:
+    def _open_circuit(self, path: Traversable, *, example: bool = False) -> None:
         if not self._confirm_discard("opening a circuit"):
             return
         # Loading the session first means a rejected file or a cancelled rename changes nothing.
@@ -438,6 +452,7 @@ class SimulatorWindow(QMainWindow):
             return
         if isinstance(path, Path):
             self.session.record_file(path, circuit.definitions)
+        self._circuit_path = path if isinstance(path, Path) and not example else None
         self._circuit_name = Path(path.name).stem
         self._show_editor_contents(int(circuit.initial_bits, 2))
 
@@ -488,6 +503,7 @@ class SimulatorWindow(QMainWindow):
         if not self._confirm_discard("starting a new circuit"):
             return
         self.session.new_circuit()
+        self._circuit_path = None
         self._circuit_name = "Untitled"
         self._show_editor_contents(0)
 
@@ -541,7 +557,7 @@ class SimulatorWindow(QMainWindow):
         )
         self._show_editor_contents(0)
 
-    def _save_open_gate(self) -> bool:
+    def _save_open_gate(self, path: Path) -> bool:
         """Write the edited gate back to the file it came from, then apply the edits everywhere it is used.
 
         If the write fails, the edits stay pending so the user can save again.
@@ -560,7 +576,8 @@ class SimulatorWindow(QMainWindow):
                     raise ValueError(f"Saving would change {gate.gate_id} used by another gate in this file.")
                 previous[gate.gate_id] = gate
             definitions = GateLibrary(previous.values()).user_definitions
-            save_gates(self._open_gate_path, definitions)
+            save_gates(path, definitions)
+            self._open_gate_path = path
             self.session.record_file(self._open_gate_path, definitions)
             self._open_gate_file_gates = definitions
             self._original_gate_name = gate_id

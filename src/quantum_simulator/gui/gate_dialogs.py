@@ -177,6 +177,18 @@ class _DefinitionDialog(QDialog):
         if written:
             self.accept()
 
+    def _add_creation_choices(self, layout: QVBoxLayout) -> None:
+        message = (
+            "Create adds the gate to the palette. Save a circuit that uses it to keep it, "
+            "or save it separately later with Manage gates → Save gate as…"
+        )
+        if self._save_gate is not None:
+            message += "\nCreate and save… also saves the gate to its own file now."
+        hint = QLabel(message)
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+        layout.addWidget(self.buttons)
+
     def _check_name(self) -> bool:
         name = self.name_edit.text()
         if not name:
@@ -232,7 +244,7 @@ class MatrixGateDialog(_DefinitionDialog):
         layout.addSpacing(8)
         layout.addWidget(self.checks)
         layout.addStretch()
-        layout.addWidget(self.buttons)
+        self._add_creation_choices(layout)
 
         self.reference_toggle.clicked.connect(self._toggle_reference)
         self.name_edit.textChanged.connect(self._check)
@@ -320,6 +332,12 @@ class MatrixGateDialog(_DefinitionDialog):
                     cell.setToolTip("")
                     shown_value = format_complex(value)
                     value_label.setText("" if shown_value == cell.text().strip() else f"= {shown_value}")
+                bold = value is not None and value != 0
+                for widget in (cell, value_label):
+                    font = widget.font()
+                    if font.bold() != bold:
+                        font.setBold(bold)
+                        widget.setFont(font)
                 values.append(value)
             entries.append(values)
 
@@ -369,7 +387,7 @@ class ControlledGateDialog(_DefinitionDialog):
         layout.addLayout(self.form)
         layout.addSpacing(8)
         layout.addWidget(self.checks)
-        layout.addWidget(self.buttons)
+        self._add_creation_choices(layout)
 
         self.base_choice.currentTextChanged.connect(self._suggest_name)
         self.name_edit.textChanged.connect(self._check)
@@ -411,7 +429,7 @@ class CircuitGateDialog(_DefinitionDialog):
         layout.addLayout(self.form)
         layout.addSpacing(8)
         layout.addWidget(self.checks)
-        layout.addWidget(self.buttons)
+        self._add_creation_choices(layout)
 
         self.name_edit.textChanged.connect(self._check)
         self._check()

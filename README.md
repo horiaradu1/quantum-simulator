@@ -26,7 +26,7 @@ uv run --locked python -m quantum_simulator
 
 - Set the qubit count and initial bits. Drag gates onto the circuit or select a gate and click a cell. Right-click to remove a gate.
 - **Run** shows amplitudes and probabilities. **Measure** collapses the state to one outcome.
-- Use **File** to start a circuit, open a saved circuit or try an example. **Save** (Ctrl+S) saves the open circuit or gate.
+- Use **File** to start a circuit, open a saved circuit or try an example. **Save** (Ctrl+S) writes the open circuit or gate to its current file. **Save As…** lets you choose a new path.
 - Under **Gates**, enter a matrix for 1–3 qubits, add a control to a gate or turn the current circuit into a gate. **Create** adds it to the palette. **Create and save…** also writes a gate file.
 - Use **Manage gates** to inspect gates, save a custom gate to its own file or delete an unused gate.
 - **File → Open gate** loads gates into the palette. Gates made from circuits also open for editing. Circuit and gate files include the custom gates they use.
