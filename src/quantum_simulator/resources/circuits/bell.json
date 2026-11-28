@@ -1,0 +1,10 @@
+{
+  "kind": "circuit",
+  "version": 1,
+  "qubits": 2,
+  "initial_bits": "00",
+  "columns": [
+    [{"gate": "H", "wires": [0]}],
+    [{"gate": "CNOT", "wires": [0, 1]}]
+  ]
+}

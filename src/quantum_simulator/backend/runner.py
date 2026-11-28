@@ -17,8 +17,8 @@ class RunSettings:
     p: float = 0
 
     def __post_init__(self):
-        if self.seed is not None and not isinstance(self.seed, int):
-            raise ValueError("The seed must be an integer.")
+        if self.seed is not None and (type(self.seed) is not int or self.seed < 0):
+            raise ValueError("The seed must be a non-negative integer.")
         if self.p != 0:
             raise ValueError("Noise is not available yet, so p must be 0.")
 
@@ -30,6 +30,9 @@ class RunSettings:
         if not isinstance(settings, dict):
             raise ValueError('"settings" must be an object.')
         return cls(seed=settings.get("seed"), p=settings.get("p", 0))
+
+    def to_dict(self) -> dict:
+        return {"seed": self.seed, "p": self.p}
 
 
 def prepare_state(circuit: Circuit, settings: RunSettings | None = None) -> QuantumState:
@@ -43,8 +46,9 @@ def prepare_state(circuit: Circuit, settings: RunSettings | None = None) -> Quan
 
 def apply_gates(state: QuantumState, circuit: Circuit) -> Iterator[PlacedGate]:
     """Apply the circuit's gates in execution order, yielding each gate after it runs."""
+    library = circuit.gate_library()
     for gate in circuit.execution_order():
-        state.apply_gate(gate.name, *gate.wires)
+        state.apply_gate(library.matrix(gate.name), *gate.wires)
         yield gate
 
 

@@ -2,19 +2,27 @@
 
 import gc
 import os
+import tempfile
 import unittest
 import weakref
+from pathlib import Path
 from unittest.mock import patch
 
-from numpy.testing import assert_array_equal
+import numpy as np
+from numpy.testing import assert_allclose, assert_array_equal
 from PySide6.QtCore import QEvent, QMimeData, QPointF, Qt
 from PySide6.QtGui import QDragEnterEvent, QDropEvent
 from PySide6.QtTest import QSignalSpy, QTest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QDialog, QDialogButtonBox, QFileDialog, QInputDialog, QMessageBox
 
-from quantum_simulator.backend import Circuit, PlacedGate, QuantumState, run
+from quantum_simulator.backend import Circuit, ControlledGate, MatrixGate, PlacedGate, QuantumState, run
+from quantum_simulator.backend.circuit_file import save_circuit
 from quantum_simulator.gui.gate_button import GATE_MIME_TYPE
+from quantum_simulator.gui.gate_dialogs import MatrixGateDialog
+from quantum_simulator.gui.gate_manager import GateManagerDialog
 from quantum_simulator.gui.window import SimulatorWindow
+
+TEST_CIRCUITS = Path(__file__).parents[1] / "resources" / "circuits"
 
 
 class WindowTestCase(unittest.TestCase):
@@ -26,6 +34,12 @@ class WindowTestCase(unittest.TestCase):
         cls.app = QApplication.instance() or QApplication([])
 
     def setUp(self):
+        # Answer "Don't save" to any question, so a prompt never blocks an offscreen test.
+        # Tests about prompts patch the answer themselves.
+        answer_discard = patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Discard)
+        answer_discard.start()
+        self.addCleanup(answer_discard.stop)
+
         self.window = SimulatorWindow()
         self.window.show()
         self.addCleanup(self.dispose_window)
@@ -130,10 +144,10 @@ class TestGatePlacement(WindowTestCase):
         window.initial_state.setValue(0b011)
         grid.gate_dropped.emit("TOFFOLI", 0, 0)
         grid.cell_clicked.emit(0, 2)
-        self.assertIn("target in step 1", window.circuit_hint.text())
+        self.assertEqual(window.circuit_hint.text(), "Choose the target.")
 
         grid.cell_clicked.emit(1, 1)
-        self.assertIn("second control in step 2", window.circuit_hint.text())
+        self.assertEqual(window.circuit_hint.text(), "Choose the second control.")
         grid.cell_clicked.emit(1, 2)
         grid.cell_clicked.emit(1, 0)
 
@@ -142,8 +156,211 @@ class TestGatePlacement(WindowTestCase):
         self.assertEqual(window.results_table.item(0, 0).text(), "111")
 
 
+class TestCircuitFiles(WindowTestCase):
+    """Save and open circuits through the File menu."""
+
+    def test_save_clear_open_and_run(self):
+        """A saved circuit reopens after Clear and runs the same. An invalid file leaves it open."""
+        window = self.window
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        window.saved_circuits = Path(directory.name)
+
+        window.qubit_count.setValue(3)
+        window.initial_state.setValue(0b101)
+        self.drop_gate("H", 0, 0)
+        self.drop_gate("CNOT", 2, 2)
+        self.drop_gate("CNOT", 2, 0)
+        expected = run(window.session.circuit("101")).amplitudes
+        with patch.object(QInputDialog, "getText", return_value=("demo", True)):
+            window.save_action.trigger()
+
+        window.clear_button.click()
+        window.qubit_count.setValue(2)
+        saved_file = str(window.saved_circuits / "demo.json")
+        with patch.object(QFileDialog, "getOpenFileName", return_value=(saved_file, "")):
+            window.open_action.trigger()
+        self.assertEqual(window.initial_state.text(), "101")
+        window.run_button.click()
+        self.wait_for_editor()
+        assert_array_equal(window.session.result.amplitudes, expected)
+
+        opened_gates = list(window.session.gates)
+        invalid_file = str(TEST_CIRCUITS / "overlapping_gates.json")
+        with (
+            patch.object(QFileDialog, "getOpenFileName", return_value=(invalid_file, "")),
+            patch.object(QMessageBox, "warning") as warning,
+        ):
+            window.open_action.trigger()
+        warning.assert_called_once()
+        self.assertIn("cross the same wires", warning.call_args.args[2])
+        self.assertEqual(window.session.gates, opened_gates)
+
+    def test_opened_circuit_shows_trailing_empty_columns(self):
+        """An opened circuit shows all 30 of its empty columns, so a gate can be dropped in the last one."""
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        path = Path(directory.name) / "wide.json"
+        save_circuit(path, Circuit(1, "0", column_count=30))
+
+        with patch.object(QFileDialog, "getOpenFileName", return_value=(str(path), "")):
+            self.window.open_action.trigger()
+        self.drop_gate("X", 29, 0)
+        self.assertEqual(self.window.session.gates, [PlacedGate(29, "X", (0,))])
+
+
+class TestUserGates(WindowTestCase):
+    """Define gates through the Gates menu and use them in the circuit."""
+
+    def test_define_matrix_gate_place_and_run(self):
+        """A typed matrix becomes a palette gate that runs like its matrix. A nonunitary one cannot be added."""
+        window = self.window
+
+        def fill_cells(dialog, rows):
+            for cells, texts in zip(dialog.cells, rows):
+                for cell, text in zip(cells, texts):
+                    cell.setText(text)
+
+        def fill_and_accept(dialog):
+            ok_button = dialog.buttons.button(QDialogButtonBox.StandardButton.Ok)
+            dialog.name_edit.setText("Rot")
+            fill_cells(dialog, [["1", "0"], ["0", "1.001"]])
+            self.assertFalse(ok_button.isEnabled())
+            self.assertIn("not unitary", dialog.checks.details["Unitary"].text())
+
+            # An expression shows its value under the cell.
+            fill_cells(dialog, [["1", "0"], ["0", "exp(i*pi)"]])
+            self.assertEqual(dialog.cell_values[1][1].text(), "= -1")
+
+            fill_cells(dialog, [["0.6", "-0.8"], ["0.8", "0.6"]])
+            self.assertTrue(ok_button.isEnabled())
+            return QDialog.DialogCode.Accepted.value
+
+        # Replacing exec with a plain function makes it receive the real dialog the window opens.
+        with patch.object(MatrixGateDialog, "exec", fill_and_accept):
+            window.new_matrix_gate_action.trigger()
+        self.assertTrue(window.gate_buttons["Rot"].isChecked())
+
+        self.drop_gate("Rot", 0, 0)
+        window.run_button.click()
+        self.wait_for_editor()
+        assert_allclose(window.session.result.amplitudes, [0.6, 0, 0.8, 0], atol=1e-12)
+
+
+class TestUnsavedChanges(WindowTestCase):
+    """Ask before unsaved edits or placed gates are lost."""
+
+    def test_prompt_before_replacing_unsaved_changes(self):
+        """Opening, clearing or closing asks first. Cancel keeps the circuit, and Don't save goes ahead."""
+        window = self.window
+        self.drop_gate("H", 0, 0)
+        cancel = QMessageBox.StandardButton.Cancel
+        with patch.object(QMessageBox, "question", return_value=cancel) as question:
+            window.examples_menu.actions()[0].trigger()
+            window.clear_button.click()
+            window.close()
+        self.assertEqual(question.call_count, 3)
+        self.assertEqual(window.session.gates, [PlacedGate(0, "H", (0,))])
+        self.assertTrue(window.isVisible())
+
+        # The test setup answers Don't save, so the example replaces the circuit.
+        window.examples_menu.actions()[0].trigger()
+        self.assertEqual([gate.name for gate in window.session.gates], ["H", "CNOT"])
+        self.assertFalse(window.session.modified)
+
+    def test_lowering_qubits_asks_before_removing_gates(self):
+        """Lowering the qubit count asks before removing gates. Cancel keeps them, and OK removes them."""
+        window = self.window
+        window.qubit_count.setValue(3)
+        self.drop_gate("H", 0, 0)
+        self.drop_gate("X", 0, 2)
+
+        cancel = QMessageBox.StandardButton.Cancel
+        with patch.object(QMessageBox, "question", return_value=cancel) as question:
+            window.qubit_count.setValue(2)
+        question.assert_called_once()
+        self.assertEqual(window.qubit_count.value(), 3)
+        self.assertEqual(len(window.session.gates), 2)
+
+        with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Ok):
+            window.qubit_count.setValue(2)
+        self.assertEqual(window.session.gates, [PlacedGate(0, "H", (0,))])
+
+
+class TestGateManager(WindowTestCase):
+    """Inspect gates and delete custom ones through Gates → Manage gates."""
+
+    def test_custom_gate_can_be_deleted_only_after_removing_it(self):
+        """A placed custom gate shows its matrix but cannot be deleted until it is removed from the circuit."""
+        window = self.window
+        window._add_definition(MatrixGate("Rot", [[0.6, -0.8], [0.8, 0.6]]))
+        self.drop_gate("Rot", 0, 0)
+
+        def check_blocked(dialog):
+            dialog.select_gate("Rot")
+            self.assertEqual(dialog.matrix.item(1, 0).text(), "0.8")
+            self.assertFalse(dialog.delete_button.isEnabled())
+            self.assertIn("Remove Rot from the circuit", dialog.delete_reason.text())
+
+        def delete(dialog):
+            dialog.select_gate("Rot")
+            with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes):
+                dialog.delete_button.click()
+
+        # Replacing exec with a plain function makes it receive the real dialog the window opens.
+        with patch.object(GateManagerDialog, "exec", check_blocked):
+            window.manage_gates_action.trigger()
+        self.right_click_cell(0, 0)
+        with patch.object(GateManagerDialog, "exec", delete):
+            window.manage_gates_action.trigger()
+        self.assertNotIn("Rot", window.gate_buttons)
+        self.assertNotIn("Rot", window.session.library)
+
+    def test_symbol_preview_never_outlines_a_cell(self):
+        """With the pointer resting on the symbol preview, choosing another gate by keyboard outlines no cell."""
+        dialog = GateManagerDialog(self.window.session, self.window)
+        self.addCleanup(dialog.close)
+        dialog.show()
+        QTest.qWaitForWindowExposed(dialog)
+        preview = dialog.preview
+        QTest.mouseMove(preview.viewport(), preview.mapFromScene(preview.cell_center(0, 0)))
+
+        QTest.keyClick(dialog.gate_list, Qt.Key.Key_Down)
+        self.assertEqual(dialog.gate_list.currentItem().text(), "X")
+        self.assertIsNone(preview.highlighted_cell)
+
+    def test_large_gate_shows_a_note_instead_of_its_matrix(self):
+        """A six-wire gate shows a note instead of building its 64×64 matrix table."""
+        session = self.window.session
+        session.library.add(
+            MatrixGate("U3", np.eye(8)),
+            ControlledGate("C4", "U3", 4),
+            ControlledGate("C5", "C4", 5),
+            ControlledGate("C6", "C5", 6),
+        )
+        dialog = GateManagerDialog(session, self.window)
+        self.addCleanup(dialog.deleteLater)
+
+        dialog.select_gate("C6")
+        self.assertTrue(dialog.matrix.isHidden())
+        self.assertEqual(dialog.matrix.rowCount(), 0)
+        self.assertIn("64×64", dialog.matrix_note.text())
+
+
 class TechnicalTests(WindowTestCase):
-    """Check Run, Measure, error recovery, and closing a busy window."""
+    """Check Run, Measure, error recovery, the qubit limit, and closing a busy window."""
+
+    def test_typed_count_above_twenty_qubits_is_refused(self):
+        """Typing 25 qubits shows a warning and keeps 2 qubits, so no oversized state is built."""
+        window = self.window
+        window.qubit_count.lineEdit().selectAll()
+        with patch.object(QMessageBox, "warning") as warning:
+            QTest.keyClicks(window.qubit_count, "25")
+            QTest.keyClick(window.qubit_count, Qt.Key.Key_Return)
+
+        warning.assert_called_once()
+        self.assertEqual(window.qubit_count.value(), 2)
+        self.assertEqual(window.session.qubits, 2)
 
     def test_run_then_measure(self):
         """Run shows loading, then the Bell pair can be measured."""

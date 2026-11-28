@@ -14,7 +14,8 @@ from urllib.request import Request, urlopen
 import numpy as np
 from numpy.testing import assert_allclose, assert_array_equal
 
-from quantum_simulator import Circuit, PlacedGate, run
+from quantum_simulator import Circuit, PlacedGate, QuantumState, run
+from quantum_simulator.backend.gates import controlled
 from quantum_simulator.server import MAX_REQUEST_BYTES, SimulationHandler, create_server
 
 BELL_DOCUMENT = {
@@ -87,13 +88,45 @@ class TestHttpServer(unittest.TestCase):
         assert_array_equal(amplitudes, run(Circuit.from_dict(BELL_DOCUMENT)).amplitudes)
         assert_allclose([outcome["probability"] for outcome in outcomes], [0.5, 0, 0, 0.5])
 
+    def test_controlled_matrix_gate_in_a_request(self):
+        """A request defining Controlled-U for a matrix U, on separated wires, gives the controlled(U) state."""
+        rotation = [
+            [0.6, -0.8],
+            [0.8,  0.6],
+        ]
+        document = {
+            "kind": "circuit",
+            "version": 1,
+            "qubits": 3,
+            "initial_bits": "000",
+            "columns": [
+                [{"gate": "H", "wires": [2]}],
+                [{"gate": "CRot", "wires": [2, 0]}],
+            ],
+            "definitions": [
+                {"id": "Rot", "kind": "matrix", "wire_count": 1,
+                 "matrix": [[[entry, 0] for entry in row] for row in rotation]},
+                {"id": "CRot", "kind": "controlled", "wire_count": 2, "base": "Rot"},
+            ],
+        }
+        status, body = self.post(document)
+        self.assertEqual(status, 200)
+
+        # The control q2 is in superposition, so only half of the state is rotated.
+        expected = QuantumState(3)
+        expected.apply_gate("H", 2)
+        expected.apply_gate(controlled(np.array(rotation)), 2, 0)
+        amplitudes = [complex(*outcome["amplitude"]) for outcome in body["outcomes"]]
+        assert_allclose(amplitudes, expected.amplitudes, atol=1e-12)
+
     def test_invalid_requests_return_an_error(self):
-        """Invalid circuits and nonzero noise return status 400 with a message."""
+        """Invalid circuits, a negative seed and nonzero noise return status 400 with a message."""
         cases = {
             "unknown gate": {"columns": [[{"gate": "CNOT10", "wires": [0, 1]}]]},
             "missing wire": {"columns": [[{"gate": "CNOT", "wires": [0]}]]},
             "wire outside register": {"columns": [[{"gate": "H", "wires": [2]}]]},
             "boolean wire": {"columns": [[{"gate": "X", "wires": [True]}]]},
+            "negative seed": {"settings": {"seed": -1, "p": 0}},
             "noise": {"settings": {"p": 0.1}},
         }
         for case, changes in cases.items():

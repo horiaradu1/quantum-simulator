@@ -42,7 +42,7 @@ The simulator returns fixed-width basis labels from `sample()` and `measure()`. 
 ### B. Minor tasks (0.5p)
 
 - ✅ Add the following gates: Y, Z, T, CY, CZ, CT, CS · `_SINGLE_QUBIT_GATES` and `_CONTROLLED_GATES` in [gates.py](../src/quantum_simulator/backend/gates.py)
-- ⚪ Support for user-defined gates given in matrix form
+- ✅ Support for user-defined gates given in matrix form · `MatrixGate` and `GateLibrary` in [gate_library.py](../src/quantum_simulator/backend/gate_library.py), dialog in [gate_dialogs.py](../src/quantum_simulator/gui/gate_dialogs.py)
 - ⚪ Support for user-defined gates given as series of other defined gates
 - ⚪ Support for Controlled-U gate (where U is any already defined gate)
 - ⚪ Support for user-defined gates export and import

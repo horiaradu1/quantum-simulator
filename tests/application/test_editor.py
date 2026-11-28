@@ -4,6 +4,7 @@ import unittest
 
 from quantum_simulator.backend.circuit import PlacedGate
 from quantum_simulator.backend.editor import EditorSession, Placement
+from quantum_simulator.backend.gate_library import ControlledGate, MatrixGate
 
 
 def _run(session, initial_bits):
@@ -76,3 +77,22 @@ class TestEditorSession(unittest.TestCase):
 
         self.assertEqual(session.gates, [PlacedGate(0, "H", (0,))])
         self.assertEqual(session.selected_gate, "H")
+
+    def test_gates_in_use_cannot_be_deleted(self):
+        """A custom gate can be deleted only when no placed gate or other custom gate uses it."""
+        session = EditorSession(qubits=2)
+        rotation = MatrixGate("Rot", [[0.6, -0.8], [0.8, 0.6]])
+        session.library.add(rotation, ControlledGate("CRot", "Rot", 2))
+        session.select_gate("CRot")
+        session.place(0, 0)
+        session.place(0, 1)
+
+        # H is built in, CRot is placed, and CRot is built from Rot.
+        for gate_id in ("H", "CRot", "Rot"):
+            with self.subTest(gate=gate_id), self.assertRaises(ValueError):
+                session.delete_gate(gate_id)
+
+        session.remove_at(0, 0)
+        session.delete_gate("CRot")
+        session.delete_gate("Rot")
+        self.assertEqual(session.library.user_definitions, ())

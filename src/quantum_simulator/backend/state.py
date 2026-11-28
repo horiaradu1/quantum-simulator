@@ -86,6 +86,7 @@ class QuantumState:
 
         Controlled gates such as CNOT and CY take the control first, CNOT10
         takes it second, and Toffoli takes both controls before the target.
+        A matrix within 1e-4 of unitary is replaced by the nearest unitary.
         """
         gate_wires = self._validate_wires(qubits)
         matrix = gate_matrix(gate, len(gate_wires))

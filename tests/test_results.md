@@ -1,6 +1,6 @@
 # Test results
 
-**✅ Passed** · 61 tests run
+**✅ Passed** · 80 tests run
 
 ## Quantum tests
 
@@ -166,59 +166,110 @@
 
 ## Application tests
 
+### Circuit files
+
+- ✅ **[Every rule checked when opening a file is checked when building a circuit, so it cannot be saved.](application/test_circuit_files.py#L35)**
+  - ✅ [`(case='unknown gate')`](application/test_circuit_files.py#L35)
+  - ✅ [`(case='CNOT on one wire')`](application/test_circuit_files.py#L35)
+  - ✅ [`(case='bad initial bits')`](application/test_circuit_files.py#L35)
+  - ✅ [`(case='too many qubits')`](application/test_circuit_files.py#L35)
+  - ✅ [`(case='undefined base gate')`](application/test_circuit_files.py#L35)
+- ✅ **[A saved circuit reopens with the same columns, user gates, settings and amplitudes.](application/test_circuit_files.py#L16)**
+  - ✅ [`(settings=RunSettings(seed=5, p=0))`](application/test_circuit_files.py#L16)
+  - ✅ [`(settings=None)`](application/test_circuit_files.py#L16)
+- ✅ **[The shared Bell circuit opens in the current format and gives 50% for 00 and 11.](application/test_circuit_files.py#L48)**
+
 ### Circuit view
 
-- ✅ **[CY from q3 to q0 draws a control dot on q3, a Y box on q0, and no symbol on q1 or q2.](application/test_circuit_view.py#L46)**
-  - ✅ [`(wire=1, item='QGraphicsEllipseItem')`](application/test_circuit_view.py#L46)
-  - ✅ [`(wire=1, item='QGraphicsRectItem')`](application/test_circuit_view.py#L46)
-  - ✅ [`(wire=1, item='QGraphicsSimpleTextItem')`](application/test_circuit_view.py#L46)
-  - ✅ [`(wire=2, item='QGraphicsEllipseItem')`](application/test_circuit_view.py#L46)
-  - ✅ [`(wire=2, item='QGraphicsRectItem')`](application/test_circuit_view.py#L46)
-  - ✅ [`(wire=2, item='QGraphicsSimpleTextItem')`](application/test_circuit_view.py#L46)
-- ✅ **[A named box on q3 and q0 numbers those wires in gate order and leaves q1 and q2 unmarked.](application/test_circuit_view.py#L63)**
+- ✅ **[Hover outlines an occupied cell, but a gate dragged onto it outlines nothing, even after a redraw.](application/test_circuit_view.py#L118)**
+- ✅ **[CU2 with its control on q3 draws a dot there and a U2 box on q0 and q1, numbered 1 and 2.](application/test_circuit_view.py#L98)**
+- ✅ **[CY from q3 to q0 draws a control dot on q3, a Y box on q0, and no symbol on q1 or q2.](application/test_circuit_view.py#L72)**
+  - ✅ [`(wire=1, item='QGraphicsEllipseItem')`](application/test_circuit_view.py#L72)
+  - ✅ [`(wire=1, item='QGraphicsRectItem')`](application/test_circuit_view.py#L72)
+  - ✅ [`(wire=1, item='QGraphicsSimpleTextItem')`](application/test_circuit_view.py#L72)
+  - ✅ [`(wire=2, item='QGraphicsEllipseItem')`](application/test_circuit_view.py#L72)
+  - ✅ [`(wire=2, item='QGraphicsRectItem')`](application/test_circuit_view.py#L72)
+  - ✅ [`(wire=2, item='QGraphicsSimpleTextItem')`](application/test_circuit_view.py#L72)
+- ✅ **[A two-wire matrix gate on q3 and q0 numbers those wires in gate order and leaves q1 and q2 unmarked.](application/test_circuit_view.py#L89)**
 
 ### Editor
 
-- ✅ **[Placing, removing or clearing gates discards the last run's result.](application/test_editor.py#L50)**
-  - ✅ [`(edit='place')`](application/test_editor.py#L50)
-  - ✅ [`(edit='remove')`](application/test_editor.py#L50)
-  - ✅ [`(edit='clear')`](application/test_editor.py#L50)
-- ✅ **[Lowering the qubit count removes gates on missing wires and reselects H if needed.](application/test_editor.py#L67)**
-- ✅ **[An invalid cell leaves a pending CNOT ready for its original target.](application/test_editor.py#L39)**
-  - ✅ [`(step=1, wire=2)`](application/test_editor.py#L39)
-  - ✅ [`(step=1, wire=-1)`](application/test_editor.py#L39)
-  - ✅ [`(step=1, wire=True)`](application/test_editor.py#L39)
-  - ✅ [`(step=-1, wire=1)`](application/test_editor.py#L39)
-  - ✅ [`(step=0.5, wire=1)`](application/test_editor.py#L39)
-- ✅ **[Editing or starting a newer run cancels an iterator even before its first step.](application/test_editor.py#L17)**
+- ✅ **[Placing, removing or clearing gates discards the last run's result.](application/test_editor.py#L51)**
+  - ✅ [`(edit='place')`](application/test_editor.py#L51)
+  - ✅ [`(edit='remove')`](application/test_editor.py#L51)
+  - ✅ [`(edit='clear')`](application/test_editor.py#L51)
+- ✅ **[Lowering the qubit count removes gates on missing wires and reselects H if needed.](application/test_editor.py#L68)**
+- ✅ **[A custom gate can be deleted only when no placed gate or other custom gate uses it.](application/test_editor.py#L81)**
+  - ✅ [`(gate='H')`](application/test_editor.py#L81)
+  - ✅ [`(gate='CRot')`](application/test_editor.py#L81)
+  - ✅ [`(gate='Rot')`](application/test_editor.py#L81)
+- ✅ **[An invalid cell leaves a pending CNOT ready for its original target.](application/test_editor.py#L40)**
+  - ✅ [`(step=1, wire=2)`](application/test_editor.py#L40)
+  - ✅ [`(step=1, wire=-1)`](application/test_editor.py#L40)
+  - ✅ [`(step=1, wire=True)`](application/test_editor.py#L40)
+  - ✅ [`(step=-1, wire=1)`](application/test_editor.py#L40)
+  - ✅ [`(step=0.5, wire=1)`](application/test_editor.py#L40)
+- ✅ **[Editing or starting a newer run cancels an iterator even before its first step.](application/test_editor.py#L18)**
+
+### Gate library
+
+- ✅ **[Matrix cells accept complex numbers, powers, sqrt, exp, pi, e and i, and nothing else.](application/test_gate_library.py#L48)**
+  - ✅ [`(text='0.5-0.5i')`](application/test_gate_library.py#L48)
+  - ✅ [`(text='-i')`](application/test_gate_library.py#L48)
+  - ✅ [`(text='1/sqrt(2)')`](application/test_gate_library.py#L48)
+  - ✅ [`(text='exp(i*pi/4)')`](application/test_gate_library.py#L48)
+  - ✅ [`(text='e^(i*pi)')`](application/test_gate_library.py#L48)
+  - ✅ [`(text='-1^2')`](application/test_gate_library.py#L48)
+  - ✅ [`(text='2*3^2')`](application/test_gate_library.py#L48)
+  - ✅ [`(text='sqrt(-1)')`](application/test_gate_library.py#L48)
+  - ✅ [`(text='cos(pi)')`](application/test_gate_library.py#L48)
+  - ✅ [`(text='-i*sin(pi/2)')`](application/test_gate_library.py#L48)
+  - ✅ [`(text='')`](application/test_gate_library.py#L48)
+  - ✅ [`(text='abc')`](application/test_gate_library.py#L48)
+  - ✅ [`(text='1/0')`](application/test_gate_library.py#L48)
+  - ✅ [`(text="__import__('os')")`](application/test_gate_library.py#L48)
+- ✅ **[Rounded unitaries become exact unitaries; wrong sizes, non-finite, nonunitary and taken names fail.](application/test_gate_library.py#L24)**
+  - ✅ [`(entry=0.70710678)`](application/test_gate_library.py#L24)
+  - ✅ [`(entry=0.7071)`](application/test_gate_library.py#L24)
+  - ✅ [`(case='3 digits')`](application/test_gate_library.py#L24)
+  - ✅ [`(case='diag(1, 1.001)')`](application/test_gate_library.py#L24)
+  - ✅ [`(case='3x3 matrix')`](application/test_gate_library.py#L24)
+  - ✅ [`(case='NaN entry')`](application/test_gate_library.py#L24)
+  - ✅ [`(case='infinite entry')`](application/test_gate_library.py#L24)
+  - ✅ [`(case='huge entry')`](application/test_gate_library.py#L24)
+  - ✅ [`(case='built-in name')`](application/test_gate_library.py#L24)
+  - ✅ [`(case='name of another gate')`](application/test_gate_library.py#L24)
+- ✅ **[A named two-wire matrix on q3 and q0 matches applying the matrix to those wires directly.](application/test_gate_library.py#L71)**
 
 ### Runner
 
-- ✅ **[Leading, internal and trailing empty columns retain their positions on import.](application/test_runner.py#L119)**
-  - ✅ [`(columns=[])`](application/test_runner.py#L119)
-  - ✅ [`(columns=[[], []])`](application/test_runner.py#L119)
-  - ✅ [`(columns=[[], [{'gate': 'H', 'wires': [0]}], [], [{'gate': 'CNOT', 'wires': [0, 1]}], [], []])`](application/test_runner.py#L119)
-- ✅ **[Document import and Python construction reject invalid wires at placement validation.](application/test_runner.py#L109)**
-  - ✅ [`(wires=(0, 0))`](application/test_runner.py#L109)
-  - ✅ [`(wires=(0, 2))`](application/test_runner.py#L109)
-  - ✅ [`(wires=(-1, 1))`](application/test_runner.py#L109)
-  - ✅ [`(wires=(True, False))`](application/test_runner.py#L109)
-  - ✅ [`(wires=(0, 1.0))`](application/test_runner.py#L109)
-- ✅ **[The server returns every Bell-state outcome at full precision, as the Python run does.](application/test_runner.py#L79)**
-- ✅ **[Invalid circuits and nonzero noise return status 400 with a message.](application/test_runner.py#L90)**
-  - ✅ [`(case='unknown gate')`](application/test_runner.py#L90)
-  - ✅ [`(case='missing wire')`](application/test_runner.py#L90)
-  - ✅ [`(case='wire outside register')`](application/test_runner.py#L90)
-  - ✅ [`(case='boolean wire')`](application/test_runner.py#L90)
-  - ✅ [`(case='noise')`](application/test_runner.py#L90)
-- ✅ **[The backend, editor session and server import while Qt is blocked.](application/test_runner.py#L42)**
-- ✅ **[Gates run by column, not in the order they were placed.](application/test_runner.py#L36)**
-- ✅ **[Missing, malformed, ambiguous and oversized lengths get a client error before reading.](application/test_runner.py#L133)**
-  - ✅ [`(lengths=[])`](application/test_runner.py#L133)
-  - ✅ [`(lengths=['-1'])`](application/test_runner.py#L133)
-  - ✅ [`(lengths=['1.5'])`](application/test_runner.py#L133)
-  - ✅ [`(lengths=['1', '2'])`](application/test_runner.py#L133)
-  - ✅ [`(lengths=['1048577'])`](application/test_runner.py#L133)
+- ✅ **[Leading, internal and trailing empty columns retain their positions on import.](application/test_runner.py#L152)**
+  - ✅ [`(columns=[])`](application/test_runner.py#L152)
+  - ✅ [`(columns=[[], []])`](application/test_runner.py#L152)
+  - ✅ [`(columns=[[], [{'gate': 'H', 'wires': [0]}], [], [{'gate': 'CNOT', 'wires': [0, 1]}], [], []])`](application/test_runner.py#L152)
+- ✅ **[Document import and Python construction reject invalid wires at placement validation.](application/test_runner.py#L142)**
+  - ✅ [`(wires=(0, 0))`](application/test_runner.py#L142)
+  - ✅ [`(wires=(0, 2))`](application/test_runner.py#L142)
+  - ✅ [`(wires=(-1, 1))`](application/test_runner.py#L142)
+  - ✅ [`(wires=(True, False))`](application/test_runner.py#L142)
+  - ✅ [`(wires=(0, 1.0))`](application/test_runner.py#L142)
+- ✅ **[The server returns every Bell-state outcome at full precision, as the Python run does.](application/test_runner.py#L80)**
+- ✅ **[A request defining Controlled-U for a matrix U, on separated wires, gives the controlled(U) state.](application/test_runner.py#L91)**
+- ✅ **[Invalid circuits, a negative seed and nonzero noise return status 400 with a message.](application/test_runner.py#L122)**
+  - ✅ [`(case='unknown gate')`](application/test_runner.py#L122)
+  - ✅ [`(case='missing wire')`](application/test_runner.py#L122)
+  - ✅ [`(case='wire outside register')`](application/test_runner.py#L122)
+  - ✅ [`(case='boolean wire')`](application/test_runner.py#L122)
+  - ✅ [`(case='negative seed')`](application/test_runner.py#L122)
+  - ✅ [`(case='noise')`](application/test_runner.py#L122)
+- ✅ **[The backend, editor session and server import while Qt is blocked.](application/test_runner.py#L43)**
+- ✅ **[Gates run by column, not in the order they were placed.](application/test_runner.py#L37)**
+- ✅ **[Missing, malformed, ambiguous and oversized lengths get a client error before reading.](application/test_runner.py#L166)**
+  - ✅ [`(lengths=[])`](application/test_runner.py#L166)
+  - ✅ [`(lengths=['-1'])`](application/test_runner.py#L166)
+  - ✅ [`(lengths=['1.5'])`](application/test_runner.py#L166)
+  - ✅ [`(lengths=['1', '2'])`](application/test_runner.py#L166)
+  - ✅ [`(lengths=['1048577'])`](application/test_runner.py#L166)
 
 ### Validation
 
@@ -244,15 +295,24 @@
 
 ### Window
 
-- ✅ **[Closing during a run discards unfinished results.](application/test_window.py#L183)**
-- ✅ **[A failed run returns to the editor and can be retried.](application/test_window.py#L170)**
-- ✅ **[Run shows loading, then the Bell pair can be measured.](application/test_window.py#L148)**
-- ✅ **[Dragging H and CNOT after right-clicking away a stray X gives the Python Bell state.](application/test_window.py#L66)**
-- ✅ **[Dragging CY from q3 to q0 turns 0001 into +i on 1001. From q0 to q3, 0001 is unchanged.](application/test_window.py#L84)**
-  - ✅ [`(wires=(3, 0))`](application/test_window.py#L84)
-  - ✅ [`(wires=(0, 3))`](application/test_window.py#L84)
-- ✅ **[Choosing a new column restarts Toffoli at its first control.](application/test_window.py#L125)**
-- ✅ **[A CNOT keeps its control after a duplicate or blocked target.](application/test_window.py#L106)**
-- ✅ **[Disposing of a busy window destroys its timer.](application/test_window.py#L235)**
-- ✅ **[Rerunning and clearing release previous states.](application/test_window.py#L213)**
-- ✅ **[The course logo loads at its fixed height below the results.](application/test_window.py#L198)**
+- ✅ **[Closing during a run discards unfinished results.](application/test_window.py#L400)**
+- ✅ **[A failed run returns to the editor and can be retried.](application/test_window.py#L387)**
+- ✅ **[Run shows loading, then the Bell pair can be measured.](application/test_window.py#L365)**
+- ✅ **[Typing 25 qubits shows a warning and keeps 2 qubits, so no oversized state is built.](application/test_window.py#L353)**
+- ✅ **[An opened circuit shows all 30 of its empty columns, so a gate can be dropped in the last one.](application/test_window.py#L199)**
+- ✅ **[A saved circuit reopens after Clear and runs the same. An invalid file leaves it open.](application/test_window.py#L162)**
+- ✅ **[A placed custom gate shows its matrix but cannot be deleted until it is removed from the circuit.](application/test_window.py#L293)**
+- ✅ **[A six-wire gate shows a note instead of building its 64×64 matrix table.](application/test_window.py#L332)**
+- ✅ **[With the pointer resting on the symbol preview, choosing another gate by keyboard outlines no cell.](application/test_window.py#L319)**
+- ✅ **[Dragging H and CNOT after right-clicking away a stray X gives the Python Bell state.](application/test_window.py#L80)**
+- ✅ **[Dragging CY from q3 to q0 turns 0001 into +i on 1001. From q0 to q3, 0001 is unchanged.](application/test_window.py#L98)**
+  - ✅ [`(wires=(3, 0))`](application/test_window.py#L98)
+  - ✅ [`(wires=(0, 3))`](application/test_window.py#L98)
+- ✅ **[Choosing a new column restarts Toffoli at its first control.](application/test_window.py#L139)**
+- ✅ **[A CNOT keeps its control after a duplicate or blocked target.](application/test_window.py#L120)**
+- ✅ **[Disposing of a busy window destroys its timer.](application/test_window.py#L452)**
+- ✅ **[Rerunning and clearing release previous states.](application/test_window.py#L430)**
+- ✅ **[Lowering the qubit count asks before removing gates. Cancel keeps them, and OK removes them.](application/test_window.py#L271)**
+- ✅ **[Opening, clearing or closing asks first. Cancel keeps the circuit, and Don't save goes ahead.](application/test_window.py#L253)**
+- ✅ **[A typed matrix becomes a palette gate that runs like its matrix. A nonunitary one cannot be added.](application/test_window.py#L215)**
+- ✅ **[The course logo loads at its fixed height below the results.](application/test_window.py#L415)**

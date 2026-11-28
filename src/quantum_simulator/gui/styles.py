@@ -10,6 +10,12 @@ SURFACE = "#ffffff"
 WINDOW_STYLE = f"""
 QMainWindow {{ background: #f2eff9; }}
 QWidget {{ color: {INK}; }}
+QMenuBar {{ background: #f2eff9; padding: 2px 6px; }}
+QMenuBar::item {{ background: transparent; padding: 4px 10px; border-radius: 4px; }}
+QMenuBar::item:selected, QMenuBar::item:pressed {{ background: {LAVENDER}; color: #382967; }}
+QMenu {{ background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 6px; padding: 4px; }}
+QMenu::item {{ padding: 5px 28px 5px 12px; border-radius: 4px; }}
+QMenu::item:selected {{ background: {LAVENDER}; color: #382967; }}
 QFrame#panel {{ background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 10px; }}
 QLabel#sectionTitle {{ color: #382967; font-size: 17px; font-weight: 700; }}
 QLabel#hint {{ color: #60576f; }}
@@ -26,14 +32,14 @@ QPushButton:disabled, QPushButton#runButton:disabled {{
 }}
 QPushButton:focus {{ border-color: {ACCENT}; }}
 QLineEdit {{ selection-background-color: {LAVENDER}; selection-color: {INK}; }}
-QSpinBox#initialState, QSpinBox#qubitCount {{
+ArrowSpinBox {{
     background: {SURFACE}; color: {INK};
     border: 1px solid #c8bedf; border-radius: 5px; padding-left: 8px;
 }}
 QSpinBox#initialState QLineEdit {{ placeholder-text-color: #60576f; }}
-QSpinBox#initialState:focus, QSpinBox#qubitCount:focus {{ border-color: {ACCENT}; }}
-QSpinBox#initialState::up-button, QSpinBox#qubitCount::up-button {{ subcontrol-position: top right; }}
-QSpinBox#initialState::down-button, QSpinBox#qubitCount::down-button {{ subcontrol-position: bottom right; }}
+ArrowSpinBox:focus {{ border-color: {ACCENT}; }}
+ArrowSpinBox::up-button {{ subcontrol-position: top right; }}
+ArrowSpinBox::down-button {{ subcontrol-position: bottom right; }}
 QGraphicsView, QTableWidget {{ border: 1px solid {BORDER}; border-radius: 5px; }}
 QGraphicsView#circuitGrid QScrollBar, QGraphicsView#circuitGrid::corner {{ background: #f2eff9; }}
 QGraphicsView#circuitGrid QScrollBar:horizontal {{ height: 14px; }}

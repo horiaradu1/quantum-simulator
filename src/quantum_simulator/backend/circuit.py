@@ -1,8 +1,8 @@
-"""Describe a circuit as placed gates and read it from the versioned circuit format."""
+"""Describe a circuit as placed gates and convert it to and from the versioned circuit format."""
 
 from dataclasses import dataclass
 
-from .gate_catalog import GATE_CATALOG
+from .gate_library import GateDefinition, GateLibrary, definition_from_dict
 
 FORMAT_VERSION = 1
 MAX_QUBITS = 20
@@ -36,32 +36,53 @@ class PlacedGate:
 
 @dataclass(frozen=True)
 class Circuit:
-    """A register size, its starting basis state, and the gates placed on it."""
+    """A register size, its starting basis state, the gates placed on it, and any user gates they use.
+
+    Every rule is checked when a circuit is built, so anything that can be saved can be opened again.
+    """
 
     qubits: int
     initial_bits: str
     gates: tuple[PlacedGate, ...] = ()
     column_count: int | None = None
+    definitions: tuple[GateDefinition, ...] = ()
 
     def __post_init__(self):
-        occupied_columns = 0
+        self._check_register()
+        library = self.gate_library()
         for gate in self.gates:
-            if not gate.wires:
-                raise ValueError(f"columns[{gate.step}]: a gate needs at least one wire.")
-            for wire in gate.wires:
-                validate_cell(gate.step, wire, self.qubits)
-            if len(set(gate.wires)) != len(gate.wires):
-                raise ValueError(f"columns[{gate.step}]: gate wires must be distinct.")
-            occupied_columns = max(occupied_columns, gate.step + 1)
+            self._check_gate(gate, library)
+        self._check_overlaps()
 
+        occupied_columns = max((gate.step + 1 for gate in self.gates), default=0)
         if self.column_count is None:
             object.__setattr__(self, "column_count", occupied_columns)
         elif type(self.column_count) is not int or self.column_count < occupied_columns:
             raise ValueError("The column count must be a nonnegative integer covering every gate.")
 
+    def gate_library(self) -> GateLibrary:
+        """Return the built-in gates plus this circuit's definitions."""
+        return GateLibrary(self.definitions)
+
     def execution_order(self) -> list[PlacedGate]:
         """Order gates by column. Gates in the same column keep their placement order."""
         return sorted(self.gates, key=lambda gate: gate.step)
+
+    def to_dict(self) -> dict:
+        """Write the circuit document. Empty columns stay as empty lists."""
+        columns = [[] for _ in range(self.column_count)]
+        for gate in self.gates:
+            columns[gate.step].append({"gate": gate.name, "wires": list(gate.wires)})
+        document = {
+            "kind": "circuit",
+            "version": FORMAT_VERSION,
+            "qubits": self.qubits,
+            "initial_bits": self.initial_bits,
+            "columns": columns,
+        }
+        if self.definitions:
+            document["definitions"] = [definition.to_dict() for definition in self.definitions]
+        return document
 
     @classmethod
     def from_dict(cls, document: object) -> "Circuit":
@@ -71,14 +92,9 @@ class Circuit:
         if type(document.get("version")) is not int or document["version"] != FORMAT_VERSION:
             raise ValueError(f"Unsupported circuit format version {document.get('version')!r}.")
 
-        qubits = document.get("qubits")
-        if type(qubits) is not int or not 1 <= qubits <= MAX_QUBITS:
-            raise ValueError(f'"qubits" must be an integer from 1 to {MAX_QUBITS}.')
-
-        initial_bits = document.get("initial_bits")
-        is_bit_string = isinstance(initial_bits, str) and set(initial_bits) <= {"0", "1"}
-        if not is_bit_string or len(initial_bits) != qubits:
-            raise ValueError(f'"initial_bits" must be {qubits} characters, each 0 or 1.')
+        definitions = document.get("definitions", [])
+        if not isinstance(definitions, list):
+            raise ValueError('"definitions" must be a list of gate definitions.')
 
         columns = document.get("columns")
         if not isinstance(columns, list):
@@ -89,22 +105,51 @@ class Circuit:
                 raise ValueError(f"columns[{step}] must be a list of gates.")
             for placement in column:
                 gates.append(_read_placement(placement, step))
-        return cls(qubits, initial_bits, tuple(gates), column_count=len(columns))
+
+        return cls(
+            document.get("qubits"),
+            document.get("initial_bits"),
+            tuple(gates),
+            column_count=len(columns),
+            definitions=tuple(definition_from_dict(definition) for definition in definitions),
+        )
+
+    def _check_register(self) -> None:
+        if type(self.qubits) is not int or not 1 <= self.qubits <= MAX_QUBITS:
+            raise ValueError(f'"qubits" must be an integer from 1 to {MAX_QUBITS}.')
+        is_bit_string = isinstance(self.initial_bits, str) and set(self.initial_bits) <= {"0", "1"}
+        if not is_bit_string or len(self.initial_bits) != self.qubits:
+            raise ValueError(f'"initial_bits" must be {self.qubits} characters, each 0 or 1.')
+
+    def _check_gate(self, gate: PlacedGate, library: GateLibrary) -> None:
+        location = f"columns[{gate.step}]"
+        if gate.name not in library:
+            raise ValueError(f"{location}: unknown gate {gate.name!r}.")
+        wire_count = library.spec(gate.name).wire_count
+        if len(gate.wires) != wire_count:
+            raise ValueError(f"{location}: {gate.name} acts on {wire_count} wire(s), not {len(gate.wires)}.")
+        for wire in gate.wires:
+            validate_cell(gate.step, wire, self.qubits)
+        if len(set(gate.wires)) != len(gate.wires):
+            raise ValueError(f"{location}: gate wires must be distinct.")
+
+    def _check_overlaps(self) -> None:
+        for index, gate in enumerate(self.gates):
+            for earlier_gate in self.gates[:index]:
+                if gate.overlaps(earlier_gate):
+                    raise ValueError(
+                        f"columns[{gate.step}]: {earlier_gate.name} and {gate.name} cross the same wires."
+                    )
 
 
 def _read_placement(placement: object, step: int) -> PlacedGate:
     location = f"columns[{step}]"
     if not isinstance(placement, dict):
         raise ValueError(f'{location}: each gate must be an object with "gate" and "wires".')
-
     gate_id = placement.get("gate")
-    if not isinstance(gate_id, str) or gate_id not in GATE_CATALOG:
+    if not isinstance(gate_id, str):
         raise ValueError(f"{location}: unknown gate {gate_id!r}.")
-
     wires = placement.get("wires")
     if not isinstance(wires, list):
         raise ValueError(f'{location}: "wires" of {gate_id} must be a list of wire indices.')
-    wire_count = GATE_CATALOG[gate_id].wire_count
-    if len(wires) != wire_count:
-        raise ValueError(f"{location}: {gate_id} acts on {wire_count} wire(s), not {len(wires)}.")
     return PlacedGate(step, gate_id, tuple(wires))
